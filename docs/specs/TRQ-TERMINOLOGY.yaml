@@ -1,0 +1,133 @@
+document: TRQ-TERMINOLOGY
+version: 1
+updated: "2026-07-15"
+terms:
+  - id: TERM-001
+    term: Tranquility
+    definition: "Mission control / C3 server baseline defined in this specification set."
+    source:
+      - "User brief §1, §3 (2026-07-15)"
+  - id: TERM-002
+    term: Cupola
+    definition: "Separate telemetry visualization client that integrates only through public API contracts."
+    source:
+      - "User brief §4 (2026-07-15)"
+  - id: TERM-003
+    term: Instance
+    definition: "A mission configuration boundary exposed by the API."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-004
+    term: Processor
+    definition: "A runtime processing context that can be listed, created, configured, and deleted."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-005
+    term: Link
+    definition: "A telemetry/command data-link endpoint with enable/disable/status operations."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-006
+    term: Space Packet
+    definition: "Packet formatted per CCSDS Space Packet Protocol."
+    source:
+      - "CCSDS 133.0-B (clause mapping pending: TBD-001)"
+  - id: TERM-007
+    term: Transfer Frame
+    definition: "TM, AOS, USLP, or TC frame unit handled by space data link protocols."
+    source:
+      - "CCSDS 132.0-B, 732.0-B, 732.1-B, 232.0-B (clause mapping pending: TBD-002..TBD-005)"
+  - id: TERM-008
+    term: Decommutation
+    definition: "Transformation of packet bytes into structured containers and parameters."
+    source:
+      - "OMG XTCE 1.3 (clause mapping pending: TBD-010)"
+  - id: TERM-009
+    term: Mission Database (MDB)
+    definition: "Telemetry/command model repository used for packet, parameter, and command interpretation."
+    source:
+      - "OMG XTCE 1.3"
+      - "External API documentation package (URL redacted)"
+  - id: TERM-010
+    term: Parameter
+    definition: "A typed telemetry datum, with raw/engineering value and time attributes."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-011
+    term: Alarm
+    definition: "Monitoring state associated with parameter limit evaluation."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-012
+    term: Command Queue
+    definition: "Runtime queue where validated commands are accepted/rejected before release."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-013
+    term: Command History
+    definition: "Trace of command lifecycle state and acknowledgments."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-014
+    term: COP-1
+    definition: "Communications Operation Procedure-1 for telecommand transfer reliability."
+    source:
+      - "CCSDS 232.1-B (clause mapping pending: TBD-006)"
+      - "External API documentation package (URL redacted)"
+  - id: TERM-015
+    term: CLTU
+    definition: "Communications Link Transmission Unit produced for TC channel coding/synchronization."
+    source:
+      - "CCSDS 231.0-B (clause mapping pending: TBD-007)"
+  - id: TERM-016
+    term: CFDP
+    definition: "CCSDS File Delivery Protocol used for file transfer operations."
+    source:
+      - "CCSDS 727.0-B (clause mapping pending: TBD-008)"
+      - "External API documentation package (URL redacted)"
+  - id: TERM-017
+    term: Parameter Archive
+    definition: "Historical parameter store and segment model exposed through archive endpoints."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-018
+    term: Replay
+    definition: "Retrieval mode that reprocesses archived records through active mission database logic."
+    source:
+      - "External API documentation package (URL redacted)"
+      - "External API documentation package (URL redacted)"
+  - id: TERM-019
+    term: Time Correlation
+    definition: "Service mapping onboard time to UTC using configured model parameters."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-020
+    term: Time Code
+    definition: "CCSDS-defined representation of time values used in links and packet data."
+    source:
+      - "CCSDS 301.0-B (clause mapping pending: TBD-009)"
+  - id: TERM-021
+    term: IAM
+    definition: "Identity and access management resource model (users, groups, roles, service accounts)."
+    source:
+      - "External API documentation package (URL redacted)"
+  - id: TERM-022
+    term: Differential Conformance
+    definition: "Behavior-level comparison of Tranquility outputs against a reference implementation for identical inputs."
+    source:
+      - "User brief §8 (2026-07-15)"
+  - id: TERM-023
+    term: Clean-room
+    definition: "Specification and implementation process using standards and documented behavior only, excluding source-code reuse."
+    source:
+      - "User brief §2.1 (2026-07-15)"
+  - id: TERM-024
+    term: Verification Cross-Reference Matrix (VCRM)
+    definition: "Matrix linking requirement IDs to verification methods and parent/child traces."
+    source:
+      - "User brief §10 and §12 (2026-07-15)"
+  - id: TERM-025
+    term: Deferred Capability
+    definition: "Named functionality intentionally excluded from this baseline requirements set."
+    source:
+      - "User brief §5 (2026-07-15)"
