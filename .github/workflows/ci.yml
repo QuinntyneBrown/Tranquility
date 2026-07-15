@@ -1,0 +1,64 @@
+name: CI
+
+# Build + test on Linux (L2-QLT-001: Linux-first deployment) and audit the
+# dependency license set (L2-QLT-003: Apache-2.0 compatibility enforced in CI).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release --logger "trx;LogFileName=results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+
+  license-audit:
+    # L2-QLT-003: fail the build when a dependency's license is incompatible
+    # with Apache-2.0 (notably copyleft: GPL/AGPL/LGPL families).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Install nuget-license
+        run: dotnet tool install --global nuget-license
+
+      - name: Audit dependency licenses
+        # license-url-mappings.json maps packages that publish only a license
+        # URL (not an SPDX expression) to their verified SPDX identifier.
+        run: >
+          nuget-license -i Tranquility.slnx -t
+          -a "Apache-2.0;MIT;BSD-2-Clause;BSD-3-Clause;MS-PL;0BSD"
+          -mapping build/license-url-mappings.json
+          -o JsonPretty
