@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Adapters: SQLite stores, XTCE loader, UDP links, filestore. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tranquility.Application\Tranquility.Application.csproj" />
+  </ItemGroup>
+
+</Project>

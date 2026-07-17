@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Deterministic domain core (L2-QLT-002): no I/O, no clock reads, and no
+       package dependencies. A purity acceptance test enforces this boundary. -->
+
+</Project>

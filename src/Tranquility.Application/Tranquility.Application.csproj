@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CQRS handlers, ports, and processor pipeline (L2-QLT-006 boundary). -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tranquility.Core\Tranquility.Core.csproj" />
+  </ItemGroup>
+
+</Project>

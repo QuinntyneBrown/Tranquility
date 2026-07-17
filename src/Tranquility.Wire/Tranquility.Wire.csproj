@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Wire contract: clean-room .proto definitions, JSON DTOs, RFC 3339
+       converters, and the documented exception envelope. Shared by the
+       server, the differential harness, and the acceptance tests. -->
+
+</Project>

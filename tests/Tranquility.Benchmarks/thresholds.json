@@ -1,0 +1,7 @@
+{
+  "ingest-packets-per-second": 5000,
+  "parameter-updates-per-second": 50000,
+  "e2e-latency-p95-ms": 250,
+  "e2e-latency-p99-ms": 500,
+  "archive-write-mbps": 20
+}
