@@ -6,4 +6,8 @@
     <ProjectReference Include="..\Tranquility.Wire\Tranquility.Wire.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+
 </Project>

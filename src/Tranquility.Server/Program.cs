@@ -1,6 +1,6 @@
-var builder = WebApplication.CreateBuilder(args);
-var app = builder.Build();
-app.Run();
+using Tranquility.Server;
+
+TranquilityApp.Build(args).Run();
 
 // Exposed for WebApplicationFactory-based acceptance tests.
 public partial class Program;
