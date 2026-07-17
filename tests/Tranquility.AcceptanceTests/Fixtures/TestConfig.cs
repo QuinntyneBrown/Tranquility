@@ -30,6 +30,9 @@ public static class TestConfig
     {
         ["Tranquility:Instances:0:Name"] = Instance,
         ["Tranquility:Instances:0:MdbPath"] = Path.Combine(XtceFixtureDirectory, "SampleSat.xml"),
+        ["Tranquility:Instances:0:Links:0:Name"] = "tm-in",
+        ["Tranquility:Instances:0:Links:0:Type"] = "udp-packet",
+        ["Tranquility:Instances:0:Links:0:Port"] = "0",
         ["Tranquility:MdbDirectory"] = XtceFixtureDirectory,
         ["Tranquility:Security:SigningKey"] = SigningKey,
 
