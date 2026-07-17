@@ -1,0 +1,35 @@
+// Clean-room Tranquility wire schema (see parameters.proto header).
+syntax = "proto3";
+
+package tranquility.wire;
+
+option csharp_namespace = "Tranquility.Wire.Proto";
+
+import "parameters.proto";
+
+message LinkEvent {
+  string instance = 1;
+  string name = 2;
+  string status = 3;
+  bool disabled = 4;
+  int64 data_in_count = 5;
+  int64 data_out_count = 6;
+  string detailed_status = 7;
+}
+
+message ProcessorInfo {
+  string instance = 1;
+  string name = 2;
+  string type = 3;
+  string state = 4;
+}
+
+message AlarmData {
+  // RAISED | SEVERITY_INCREASED | CLEARED
+  string notification_type = 1;
+  NamedObjectId id = 2;
+  string severity = 3;
+  ParameterValue trigger_value = 4;
+  ParameterValue most_recent_value = 5;
+  int32 violation_count = 6;
+}

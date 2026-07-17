@@ -4,4 +4,13 @@
        converters, and the documented exception envelope. Shared by the
        server, the differential harness, and the acceptance tests. -->
 
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\*.proto" GrpcServices="None" ProtoRoot="Protos" />
+  </ItemGroup>
+
 </Project>

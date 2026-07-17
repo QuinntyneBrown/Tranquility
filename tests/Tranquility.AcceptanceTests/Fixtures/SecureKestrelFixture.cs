@@ -15,7 +15,7 @@ namespace Tranquility.AcceptanceTests.Fixtures;
 /// self-signed certificate — no dev-certs dependency, works on Linux CI.
 /// Used for TLS, WebSocket-negotiation, and UDP acceptance tests.
 /// </summary>
-public sealed class SecureKestrelFixture : IAsyncLifetime
+public class SecureKestrelFixture : IAsyncLifetime
 {
     private WebApplication? _app;
 
@@ -23,11 +23,15 @@ public sealed class SecureKestrelFixture : IAsyncLifetime
 
     public Uri BaseAddress { get; private set; } = null!;
 
+    /// <summary>Additional configuration for derived fixtures.</summary>
+    protected virtual Dictionary<string, string?> ExtraSettings() => [];
+
     public async ValueTask InitializeAsync()
     {
         _app = TranquilityApp.Build([], builder =>
         {
             builder.Configuration.AddInMemoryCollection(TestConfig.Settings());
+            builder.Configuration.AddInMemoryCollection(ExtraSettings());
             builder.WebHost.ConfigureKestrel(kestrel =>
                 kestrel.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(Certificate)));
         });
