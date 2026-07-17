@@ -13,7 +13,13 @@ public enum InstanceState
 }
 
 /// <summary>Read model returned by lifecycle queries and commands.</summary>
-public sealed record ProcessorSnapshot(string Name, string Type, string State);
+public sealed record ProcessorSnapshot(
+    string Name,
+    string Type,
+    string State,
+    bool Persistent = true,
+    string? ReplayState = null,
+    double? Speed = null);
 
 public sealed record InstanceSnapshot(
     string Name,
@@ -54,17 +60,65 @@ public sealed class MissionInstance(string name, TimeProvider timeProvider)
     public MissionDatabase RequireMdb() => _mdb
         ?? throw new NotFoundServiceException($"No active mission database for instance '{Name}'");
 
+    private readonly Dictionary<string, Processing.IProcessor> _processors = new(StringComparer.Ordinal);
+
     /// <summary>The realtime processor attached by the host at startup.</summary>
     public Processing.RealtimeProcessor? Processor { get; private set; }
 
-    public void AttachProcessor(Processing.RealtimeProcessor processor) => Processor = processor;
+    public void AttachProcessor(Processing.RealtimeProcessor processor)
+    {
+        Processor = processor;
+        lock (_gate)
+        {
+            _processors[processor.Name] = processor;
+        }
+    }
+
+    public IReadOnlyList<Processing.IProcessor> Processors
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _processors.Values.ToList();
+            }
+        }
+    }
+
+    public void AddProcessor(Processing.IProcessor processor)
+    {
+        lock (_gate)
+        {
+            if (!_processors.TryAdd(processor.Name, processor))
+            {
+                throw new ConflictServiceException($"Processor '{processor.Name}' already exists in instance '{Name}'");
+            }
+        }
+    }
+
+    public void RemoveProcessor(string name)
+    {
+        lock (_gate)
+        {
+            _processors.Remove(name);
+        }
+    }
+
+    public Processing.IProcessor FindProcessor(string name)
+    {
+        lock (_gate)
+        {
+            return _processors.GetValueOrDefault(name)
+                ?? throw new NotFoundServiceException($"Processor '{name}' not found in instance '{Name}'");
+        }
+    }
 
     public InstanceSnapshot Snapshot()
     {
         lock (_gate)
         {
-            var processors = Processor is { } p ? new[] { p.Snapshot() } : [];
-            return new InstanceSnapshot(Name, State, timeProvider.GetUtcNow(), processors);
+            return new InstanceSnapshot(Name, State, timeProvider.GetUtcNow(),
+                _processors.Values.Select(p => p.Snapshot()).OrderBy(p => p.Name, StringComparer.Ordinal).ToList());
         }
     }
 

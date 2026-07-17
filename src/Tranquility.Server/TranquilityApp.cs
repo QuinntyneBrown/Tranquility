@@ -45,6 +45,7 @@ public static class TranquilityApp
         builder.Services.AddSingleton<ILinkFactory, Infrastructure.Links.LinkFactory>();
         builder.Services.AddSingleton<InstanceRegistry>();
         builder.Services.AddSingleton<Application.Processing.SubscriptionHub>();
+        builder.Services.AddSingleton<IArchive, Infrastructure.Sqlite.SqliteArchive>();
         builder.Services.AddSingleton<WebSockets.WebSocketApiHandler>();
         builder.Services.AddHostedService<Hosting.TelemetryHostedService>();
         builder.Services.AddSingleton<IAuditLog, InMemoryAuditLog>();
@@ -68,6 +69,16 @@ public static class TranquilityApp
         builder.Services.AddSingleton<ICommandHandler<SetLinkEnabledCommand, LinkSnapshot>, SetLinkEnabledCommandHandler>();
         builder.Services.AddSingleton<ICommandHandler<ResetLinkCountersCommand, LinkSnapshot>, ResetLinkCountersCommandHandler>();
         builder.Services.AddSingleton<ICommandHandler<RunLinkActionCommand, object>, RunLinkActionCommandHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetParameterHistoryQuery, IReadOnlyList<ArchivedParameterValue>>, GetParameterHistoryQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<ListPidsQuery, IReadOnlyList<PidInfo>>, ListPidsQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<ListSegmentsQuery, IReadOnlyList<SegmentInfo>>, ListSegmentsQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<ListProcessorsQuery, IReadOnlyList<ProcessorListEntry>>, ListProcessorsQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetProcessorQuery, ProcessorListEntry>, GetProcessorQueryHandler>();
+        builder.Services.AddSingleton<ICommandHandler<CreateProcessorCommand, ProcessorSnapshot>, CreateProcessorCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<EditProcessorCommand, ProcessorSnapshot>, EditProcessorCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<DeleteProcessorCommand, bool>, DeleteProcessorCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<PauseProcessorCommand, ProcessorSnapshot>, PauseProcessorCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<ResumeProcessorCommand, ProcessorSnapshot>, ResumeProcessorCommandHandler>();
 
         // AuthN/AuthZ from day one (L2-SEC-002, L2-SEC-003).
         builder.Services
@@ -95,6 +106,8 @@ public static class TranquilityApp
         InstanceEndpoints.Map(app);
         MdbEndpoints.Map(app);
         LinkEndpoints.Map(app);
+        ArchiveEndpoints.Map(app);
+        ProcessorEndpoints.Map(app);
 
         // Unmatched routes still answer in the documented envelope (L2-API-004).
         app.MapFallback(IResult () => throw new NotFoundServiceException("No such resource"));

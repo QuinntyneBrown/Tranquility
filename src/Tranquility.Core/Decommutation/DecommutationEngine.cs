@@ -109,13 +109,28 @@ public sealed class DecommutationEngine
                 {
                     long value = BitReader.ReadSigned(packet, bitOffset, size);
                     raw = value;
-                    eng = intType.Calibrator is { } cal ? cal.Apply(value) : value;
+                    // No ternary: it would unify long/double and box integers as doubles.
+                    if (intType.Calibrator is { } cal)
+                    {
+                        eng = cal.Apply(value);
+                    }
+                    else
+                    {
+                        eng = value;
+                    }
                 }
                 else
                 {
                     ulong value = BitReader.ReadUnsigned(packet, bitOffset, size);
                     raw = value;
-                    eng = intType.Calibrator is { } cal ? cal.Apply(value) : value;
+                    if (intType.Calibrator is { } cal)
+                    {
+                        eng = cal.Apply(value);
+                    }
+                    else
+                    {
+                        eng = value;
+                    }
                 }
 
                 alarm = intType.DefaultAlarm;

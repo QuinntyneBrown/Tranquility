@@ -10,7 +10,8 @@ namespace Tranquility.Server.Hosting;
 public sealed class TelemetryHostedService(
     InstanceRegistry registry,
     SubscriptionHub hub,
-    TimeProvider time) : IHostedService
+    TimeProvider time,
+    Tranquility.Application.Abstractions.IArchive archive) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -21,7 +22,7 @@ public sealed class TelemetryHostedService(
                 await link.StartAsync(cancellationToken);
             }
 
-            var processor = new RealtimeProcessor(instance, hub, time);
+            var processor = new RealtimeProcessor(instance, hub, time, archive);
             instance.AttachProcessor(processor);
             processor.Start();
         }
