@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Mission database using a construct outside the approved support matrix
+  (ArrayParameterType). Used by the L2-MDB-004 acceptance test - load must be
+  rejected with a diagnostic identifying the construct and its location.
+-->
+<SpaceSystem name="ExoticSat" xmlns="http://www.omg.org/spec/XTCE/20180204">
+  <TelemetryMetaData>
+    <ParameterTypeSet>
+      <IntegerParameterType name="u16">
+        <IntegerDataEncoding sizeInBits="16" encoding="unsigned" />
+      </IntegerParameterType>
+      <ArrayParameterType name="matrix" arrayTypeRef="u16">
+        <DimensionList>
+          <Dimension>
+            <StartingIndex><FixedValue>0</FixedValue></StartingIndex>
+            <EndingIndex><FixedValue>3</FixedValue></EndingIndex>
+          </Dimension>
+        </DimensionList>
+      </ArrayParameterType>
+    </ParameterTypeSet>
+    <ParameterSet>
+      <Parameter name="Counter" parameterTypeRef="u16" />
+    </ParameterSet>
+    <ContainerSet>
+      <SequenceContainer name="Root">
+        <EntryList>
+          <ParameterRefEntry parameterRef="Counter" />
+        </EntryList>
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+</SpaceSystem>
