@@ -22,9 +22,15 @@ public static class TestConfig
     /// <summary>Fixed HS256 signing key so tokens verify across fixtures.</summary>
     public const string SigningKey = "dGVzdC1zaWduaW5nLWtleS0zMi1ieXRlcy1sb25nISE=";
 
+    /// <summary>Directory holding the XTCE fixtures (also the server's MDB directory).</summary>
+    public static string XtceFixtureDirectory =>
+        Path.Combine(Traceability.RepoPaths.Root, "tests", "fixtures", "xtce");
+
     public static Dictionary<string, string?> Settings() => new()
     {
         ["Tranquility:Instances:0:Name"] = Instance,
+        ["Tranquility:Instances:0:MdbPath"] = Path.Combine(XtceFixtureDirectory, "SampleSat.xml"),
+        ["Tranquility:MdbDirectory"] = XtceFixtureDirectory,
         ["Tranquility:Security:SigningKey"] = SigningKey,
 
         ["Tranquility:Security:Users:0:Username"] = AdminUser,

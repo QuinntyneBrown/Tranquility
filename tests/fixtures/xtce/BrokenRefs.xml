@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Deliberately invalid mission database: three broken references.
+  Used by the L2-MDB-001 acceptance test - load must be rejected with an
+  exhaustive validation report (all three findings, not fail-fast).
+-->
+<SpaceSystem name="BrokenSat" xmlns="http://www.omg.org/spec/XTCE/20180204">
+  <TelemetryMetaData>
+    <ParameterTypeSet>
+      <IntegerParameterType name="u16">
+        <IntegerDataEncoding sizeInBits="16" encoding="unsigned" />
+      </IntegerParameterType>
+    </ParameterTypeSet>
+    <ParameterSet>
+      <Parameter name="Counter" parameterTypeRef="u16" />
+      <Parameter name="Ghost" parameterTypeRef="missingType" />
+    </ParameterSet>
+    <ContainerSet>
+      <SequenceContainer name="Root">
+        <EntryList>
+          <ParameterRefEntry parameterRef="Counter" />
+          <ParameterRefEntry parameterRef="missingParameter" />
+        </EntryList>
+      </SequenceContainer>
+      <SequenceContainer name="Derived">
+        <EntryList>
+          <ParameterRefEntry parameterRef="Counter" />
+        </EntryList>
+        <BaseContainer containerRef="missingContainer" />
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+</SpaceSystem>
