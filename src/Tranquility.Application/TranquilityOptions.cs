@@ -19,6 +19,19 @@ public sealed class InstanceOptions
 
     /// <summary>XTCE document activated for this instance at boot.</summary>
     public string? MdbPath { get; init; }
+
+    public List<LinkOptions> Links { get; init; } = [];
+}
+
+public sealed class LinkOptions
+{
+    public required string Name { get; init; }
+
+    /// <summary>Adapter type, e.g. <c>udp-packet</c>.</summary>
+    public required string Type { get; init; }
+
+    /// <summary>Local port for socket links; 0 binds ephemerally.</summary>
+    public int Port { get; init; }
 }
 
 public sealed class SecurityOptions

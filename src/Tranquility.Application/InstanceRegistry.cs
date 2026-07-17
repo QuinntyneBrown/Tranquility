@@ -29,9 +29,18 @@ public sealed record InstanceSnapshot(
 public sealed class MissionInstance(string name, TimeProvider timeProvider)
 {
     private readonly Lock _gate = new();
+    private readonly List<ILink> _links = [];
     private volatile MissionDatabase? _mdb;
 
     public string Name { get; } = name;
+
+    public IReadOnlyList<ILink> Links => _links;
+
+    public void AddLink(ILink link) => _links.Add(link);
+
+    public ILink FindLink(string name) =>
+        _links.FirstOrDefault(l => string.Equals(l.Name, name, StringComparison.Ordinal))
+            ?? throw new NotFoundServiceException($"Link '{name}' not found in instance '{Name}'");
 
     public InstanceState State { get; private set; } = InstanceState.Running;
 
@@ -96,10 +105,18 @@ public sealed class InstanceRegistry
 {
     private readonly Dictionary<string, MissionInstance> _instances;
 
-    public InstanceRegistry(TranquilityOptions options, TimeProvider timeProvider, IMdbLoader mdbLoader)
+    public InstanceRegistry(TranquilityOptions options, TimeProvider timeProvider, IMdbLoader mdbLoader, ILinkFactory linkFactory)
     {
         _instances = options.Instances
             .ToDictionary(i => i.Name, i => new MissionInstance(i.Name, timeProvider), StringComparer.Ordinal);
+
+        foreach (var instanceOptions in options.Instances)
+        {
+            foreach (var linkOptions in instanceOptions.Links)
+            {
+                _instances[instanceOptions.Name].AddLink(linkFactory.Create(linkOptions));
+            }
+        }
 
         // Boot-time MDB activation from trusted configuration. A failing boot
         // model leaves the instance without an active MDB (queries answer 404)

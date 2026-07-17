@@ -28,7 +28,7 @@ public sealed class FrameIngestTests
 
         var extractor = new VirtualChannelPacketExtractor();
         var packets = extractor.Feed(decoded.DataField, decoded.FirstHeaderPointer);
-        Assert.Equal(packet, Assert.Single(packets));
+        Assert.Equal(packet, Assert.Single(NonIdle(packets)));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class FrameIngestTests
         Assert.True(FrameDecoder.TryDecode(frame2, profile, out var d2, out _));
         var packets = extractor.Feed(d2!.DataField, d2.FirstHeaderPointer);
 
-        Assert.Equal(packet, Assert.Single(packets));
+        Assert.Equal(packet, Assert.Single(NonIdle(packets)));
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public sealed class FrameIngestTests
         Assert.Equal(1, decoded.FrameCount);
 
         var packets = new VirtualChannelPacketExtractor().Feed(decoded.DataField, decoded.FirstHeaderPointer);
-        Assert.Equal(packet, Assert.Single(packets));
+        Assert.Equal(packet, Assert.Single(NonIdle(packets)));
     }
 
     [Fact]
@@ -84,8 +84,12 @@ public sealed class FrameIngestTests
         Assert.Equal(5, decoded.VirtualChannelId);
 
         var packets = new VirtualChannelPacketExtractor().Feed(decoded.DataField, decoded.FirstHeaderPointer);
-        Assert.Equal(packet, Assert.Single(packets));
+        Assert.Equal(packet, Assert.Single(NonIdle(packets)));
     }
+
+    /// <summary>The mission packets: extraction minus the idle padding packets.</summary>
+    private static List<byte[]> NonIdle(IReadOnlyList<byte[]> packets) =>
+        packets.Where(p => !SpacePacketHeader.Parse(p).IsIdle).ToList();
 
     /// <summary>Pads with 0xCA idle filler behind a trailing idle-packet-free zone.</summary>
     private static byte[] Pad(byte[] data, int size)
