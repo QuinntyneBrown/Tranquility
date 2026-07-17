@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SampleSat demonstration mission database.
+  Structure: OMG XTCE 1.2/1.3 subset supported by Tranquility (see XtceLoader).
+  The Root container decodes the CCSDS 133.0-B primary header; SciPacket extends
+  it for APID 100 science telemetry.
+-->
+<SpaceSystem name="SampleSat" xmlns="http://www.omg.org/spec/XTCE/20180204">
+  <TelemetryMetaData>
+    <ParameterTypeSet>
+      <IntegerParameterType name="u3">
+        <IntegerDataEncoding sizeInBits="3" encoding="unsigned" />
+      </IntegerParameterType>
+      <IntegerParameterType name="u1">
+        <IntegerDataEncoding sizeInBits="1" encoding="unsigned" />
+      </IntegerParameterType>
+      <IntegerParameterType name="u11">
+        <IntegerDataEncoding sizeInBits="11" encoding="unsigned" />
+      </IntegerParameterType>
+      <IntegerParameterType name="u2">
+        <IntegerDataEncoding sizeInBits="2" encoding="unsigned" />
+      </IntegerParameterType>
+      <IntegerParameterType name="u14">
+        <IntegerDataEncoding sizeInBits="14" encoding="unsigned" />
+      </IntegerParameterType>
+      <IntegerParameterType name="u16">
+        <IntegerDataEncoding sizeInBits="16" encoding="unsigned" />
+      </IntegerParameterType>
+      <FloatParameterType name="temperatureType">
+        <IntegerDataEncoding sizeInBits="12" encoding="unsigned">
+          <DefaultCalibrator>
+            <PolynomialCalibrator>
+              <Term exponent="0" coefficient="-20" />
+              <Term exponent="1" coefficient="0.1" />
+            </PolynomialCalibrator>
+          </DefaultCalibrator>
+        </IntegerDataEncoding>
+        <DefaultAlarm>
+          <StaticAlarmRanges>
+            <WarningRange minInclusive="-10" maxInclusive="30" />
+            <CriticalRange minInclusive="-30" maxInclusive="40" />
+          </StaticAlarmRanges>
+        </DefaultAlarm>
+      </FloatParameterType>
+      <EnumeratedParameterType name="modeType">
+        <IntegerDataEncoding sizeInBits="4" encoding="unsigned" />
+        <EnumerationList>
+          <Enumeration value="0" label="SAFE" />
+          <Enumeration value="1" label="NOMINAL" />
+          <Enumeration value="2" label="SCIENCE" />
+        </EnumerationList>
+      </EnumeratedParameterType>
+      <FloatParameterType name="voltsType">
+        <FloatDataEncoding sizeInBits="32" />
+      </FloatParameterType>
+    </ParameterTypeSet>
+    <ParameterSet>
+      <Parameter name="Version" parameterTypeRef="u3" />
+      <Parameter name="Type" parameterTypeRef="u1" />
+      <Parameter name="SecHdrFlag" parameterTypeRef="u1" />
+      <Parameter name="Apid" parameterTypeRef="u11" />
+      <Parameter name="SeqFlags" parameterTypeRef="u2" />
+      <Parameter name="SeqCount" parameterTypeRef="u14" />
+      <Parameter name="PacketLength" parameterTypeRef="u16" />
+      <Parameter name="Counter" parameterTypeRef="u16" />
+      <Parameter name="Temperature" parameterTypeRef="temperatureType">
+        <AliasSet>
+          <Alias nameSpace="MIL-STD" alias="TEMP01" />
+        </AliasSet>
+      </Parameter>
+      <Parameter name="Mode" parameterTypeRef="modeType" />
+      <Parameter name="BusVoltage" parameterTypeRef="voltsType" />
+    </ParameterSet>
+    <ContainerSet>
+      <SequenceContainer name="Root" abstract="true">
+        <EntryList>
+          <ParameterRefEntry parameterRef="Version" />
+          <ParameterRefEntry parameterRef="Type" />
+          <ParameterRefEntry parameterRef="SecHdrFlag" />
+          <ParameterRefEntry parameterRef="Apid" />
+          <ParameterRefEntry parameterRef="SeqFlags" />
+          <ParameterRefEntry parameterRef="SeqCount" />
+          <ParameterRefEntry parameterRef="PacketLength" />
+        </EntryList>
+      </SequenceContainer>
+      <SequenceContainer name="SciPacket">
+        <EntryList>
+          <ParameterRefEntry parameterRef="Counter" />
+          <ParameterRefEntry parameterRef="Temperature" />
+          <ParameterRefEntry parameterRef="Mode" />
+          <ParameterRefEntry parameterRef="BusVoltage" />
+        </EntryList>
+        <BaseContainer containerRef="Root">
+          <RestrictionCriteria>
+            <Comparison parameterRef="Apid" value="100" useCalibratedValue="false" />
+          </RestrictionCriteria>
+        </BaseContainer>
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+</SpaceSystem>
