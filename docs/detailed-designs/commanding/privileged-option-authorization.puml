@@ -1,0 +1,41 @@
+@startuml privileged-option-authorization
+' Requirements: L1-CMD-002, L2-CMD-006
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Privileged command issue options: authorization check and denial
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Service" as AUTH
+participant "IssueCommandHandler" as ICH
+queue "Command Queue" as CQ
+database "Audit Log" as AUD
+
+OP -> API ++ : POST .../commands/{name}\n{ assignments, disableTransmissionConstraints: true,\ndisableVerifiers: true }
+API -> API : Detect privileged options in request\n(marked privileged in documented API)
+API -> AUTH ++ : CheckPrivilege(user, "CommandOptions.Override")
+
+alt caller lacks elevated privilege
+    AUTH --> API : Denied
+    API -> AUD ++ : Record(user, "privileged option denied",\noptions, time)
+    AUD --> API --
+    API --> OP : 403 Forbidden (authorization error)
+    note right of OP
+        AC L2-CMD-006: GIVEN a caller without elevated
+        privilege WHEN privileged command options are
+        submitted THEN the request is denied with
+        authorization error. (L1-CMD-002: uplink override
+        operations require strict authorization.)
+    end note
+else caller holds elevated privilege
+    AUTH --> API -- : Granted
+    API -> AUD ++ : Record(user, "privileged option used",\noptions, time)
+    AUD --> API --
+    API -> ICH ++ : IssueCommandRequest(overrides active)
+    ICH -> ICH : Skip transmission constraints\nand verifier attachment as requested
+    ICH -> CQ ++ : Enqueue(id, binary)
+    CQ --> ICH --
+    ICH --> API -- : IssueCommandResponse
+    API --> OP -- : 200 OK { id, binary }
+end
+@enduml

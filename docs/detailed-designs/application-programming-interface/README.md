@@ -1,0 +1,15 @@
+# Application Programming Interface — detailed design
+
+The API subsystem is the wire-compatibility boundary of Tranquility: an ASP.NET Core server layer ("HTTP API" and "WebSocket API") that reproduces the documented reference mission-control API exactly as published. HTTP requests flow through an Exception Envelope Middleware into CQRS handlers in the application layer (instance registry, processor registry, subscription manager), which delegate to core-domain services (MDB command resolution, command assembly) and infrastructure (command queue, audit log). Two cross-cutting wire-semantics mechanisms enforce L1-API-002 on every path: the Exception Envelope Middleware maps all non-2xx outcomes to the documented `{"exception":{"type","msg"}}` body, and an `Rfc3339TimestampConverter` in the wire serializer emits every time field as UTC ISO 8601 / RFC 3339. The WebSocket API at `/api/websocket` negotiates `json` or `protobuf` subprotocols at upgrade time and implements the documented framing model: per-call correlation ids, per-session monotonic sequence numbers, and `state`/`cancel` built-ins.
+
+| Diagram | Behaviour | Requirements |
+|---|---|---|
+| [list-instances-nominal.puml](list-instances-nominal.puml) | List Instances — `GET /api/instances` nominal response with documented instance fields | L1-API-001, L2-API-001, L2-API-005 |
+| [issue-command-nominal.puml](issue-command-nominal.puml) | Issue Command — `POST /api/processors/{instance}/{processor}/commands/{name}` nominal, returning command identity and assignment fields | L1-API-001, L2-API-002, L2-API-005 |
+| [issue-command-rejection.puml](issue-command-rejection.puml) | Issue Command rejection paths — unknown instance/processor, unknown command, invalid argument, each in the exception envelope | L1-API-002, L2-API-002, L2-API-004 |
+| [websocket-json-subprotocol.puml](websocket-json-subprotocol.puml) | WebSocket handshake — `Sec-WebSocket-Protocol: json` accepted with JSON message encoding | L1-API-001, L2-API-003 |
+| [websocket-protobuf-subprotocol.puml](websocket-protobuf-subprotocol.puml) | WebSocket handshake — `Sec-WebSocket-Protocol: protobuf` accepted with protobuf message encoding | L1-API-001, L2-API-003 |
+| [websocket-subprotocol-rejection.puml](websocket-subprotocol-rejection.puml) | WebSocket handshake alternate paths — absent subprotocol falls back to JSON; unsupported-only offer is refused | L1-API-001, L2-API-003 |
+| [error-envelope-mapping.puml](error-envelope-mapping.puml) | Exception envelope mapping — 400/403/404/500 outcomes all serialized as `exception.type` / `exception.msg` | L1-API-002, L2-API-004 |
+| [timestamp-utc-serialization.puml](timestamp-utc-serialization.puml) | Timestamp serialization — every time-valued field emitted as UTC ISO 8601 / RFC 3339 | L1-API-002, L2-API-005 |
+| [websocket-call-correlation.puml](websocket-call-correlation.puml) | WebSocket framing — call correlation, sequence tracking, `state` and `cancel` built-ins, including cancel of an unknown call | L1-API-001, L1-API-002, L2-API-003 |

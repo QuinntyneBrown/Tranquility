@@ -1,0 +1,49 @@
+@startuml mdb-command-resolution
+' Requirements: L2-MDB-003, L1-MDB-001
+' Source: docs/specs/mission-database/L1.md, docs/specs/mission-database/L2.md
+title MDB API: Command Resolution by Qualified Name and Alias
+autonumber
+
+actor "Operator Client" as OP
+participant "HTTP API" as API
+participant "GetCommandHandler" as QH
+participant "Instance Registry" as REG
+participant "Name Index" as IDX
+participant "MDB Model" as MODEL
+
+== Resolution by qualified name ==
+OP -> API ++ : GET /api/mdb/{instance}/commands\n/SC1/AOCS/SetPointingMode
+API -> QH ++ : GetCommandQuery(instance,\nqualifiedName)
+QH -> REG ++ : GetActiveModel(instance)
+REG --> QH -- : MdbModel reference
+QH -> IDX ++ : ResolveQualified(\n"/SC1/AOCS/SetPointingMode")
+IDX --> QH -- : commandId = C-0207
+QH -> MODEL ++ : GetCommandInfo(C-0207)
+MODEL --> QH -- : CommandInfo(arguments,\nsignificance, aliases)
+QH --> API -- : CommandInfo
+API --> OP -- : 200 OK {qualifiedName,\nalias set, arguments}
+
+== Resolution by alias ==
+OP -> API ++ : GET /api/mdb/{instance}/commands\n/alias/OPS-NAME/SET_PNT_MODE
+API -> QH ++ : GetCommandQuery(instance,\nnamespace="OPS-NAME",\nalias="SET_PNT_MODE")
+QH -> REG ++ : GetActiveModel(instance)
+REG --> QH -- : MdbModel reference
+QH -> IDX ++ : ResolveAlias("OPS-NAME",\n"SET_PNT_MODE")
+
+alt Alias defined in XTCE alias namespace
+    IDX --> QH : commandId = C-0207
+    QH -> MODEL ++ : GetCommandInfo(C-0207)
+    MODEL --> QH -- : CommandInfo (same entry)
+    QH --> API : CommandInfo
+    API --> OP : 200 OK (identical command)
+    note over IDX, MODEL
+      L2-MDB-003: alias-based identification resolves
+      the same command definition (C-0207) as the
+      qualified name defined in XTCE
+    end note
+else Name or alias not found in index
+    IDX --> QH -- : no match
+    QH --> API -- : NotFound(name, namespace)
+    API --> OP -- : 404 Not Found\n{error: "command not defined\nin active mission database"}
+end
+@enduml

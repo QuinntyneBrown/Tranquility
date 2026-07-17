@@ -1,0 +1,45 @@
+@startuml parameters-subscription-invalid-request
+' Requirements: L2-RTS-002, L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Parameters Subscription - Invalid Request Rejected
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+participant "Instance Registry" as IR
+participant "MDB Model" as MDB
+
+note over Client, WS
+  L2-RTS-002 conditions the nominal flow on a VALID
+  subscription request; an invalid request must be
+  rejected with a correlated exception reply and
+  must not create a stream.
+end note
+
+Client -> WS ++ : { type: "parameters", id: 3,\n  options: { instance, processor, id: [names] } }
+WS -> SubMgr ++ : CreateParameterSubscription(session, options)
+SubMgr -> IR ++ : ResolveProcessor(instance, processor)
+
+alt instance or processor unknown
+  IR --> SubMgr -- : not found
+  SubMgr --> WS : error(404, "unknown instance/processor")
+  WS --> Client : { type: "reply", seq: n, data: { replyTo: 3,\n  exception: { code: 404, msg: "unknown instance/processor" } } }
+else parameter name not in MDB
+  IR --> SubMgr : processor
+  SubMgr -> MDB ++ : ResolveParameters(names)
+  MDB --> SubMgr -- : "/inst/UNKNOWN_PARAM" unresolved
+  SubMgr --> WS : error(400, "invalid parameter")
+  WS --> Client : { type: "reply", seq: n, data: { replyTo: 3,\n  exception: { code: 400, msg: "invalid parameter\n  /inst/UNKNOWN_PARAM" } } }
+else request well-formed and resolvable
+  SubMgr --> WS -- : call = c
+  WS --> Client : { type: "reply", seq: n, data: { replyTo: 3, call: c } }
+end
+
+note right of Client
+  On rejection no call number is allocated,
+  no subscription is registered, and the
+  WebSocket session remains open.
+end note
+deactivate WS
+@enduml

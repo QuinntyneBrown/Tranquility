@@ -1,0 +1,51 @@
+@startuml xtce-load-and-activate
+' Requirements: L1-MDB-001, L2-MDB-001
+' Source: docs/specs/mission-database/L1.md, docs/specs/mission-database/L2.md
+title XTCE Mission Database Load and Activation (Nominal)
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "LoadMissionDatabaseHandler" as CMD
+participant "XTCE Loader" as LOADER
+database "XTCE File Store" as FS
+participant "XTCE Validator" as VAL
+participant "MDB Model Builder" as BUILDER
+participant "Instance Registry" as REG
+participant "Audit Log" as AUDIT
+
+OP -> API ++ : POST /api/mdb/{instance}/load\n{xtceRef, version}
+API -> CMD ++ : LoadMissionDatabaseCommand(instance, xtceRef)
+
+== Parse ==
+CMD -> LOADER ++ : Load(xtceRef)
+LOADER -> FS ++ : Read XTCE document
+FS --> LOADER -- : XML content
+LOADER -> LOADER : Parse SpaceSystem tree\n(parameters, containers, commands, algorithms)
+
+== Validate before activation ==
+LOADER -> VAL ++ : Validate(spaceSystemTree)
+VAL -> VAL : Check structural integrity\nagainst XTCE 1.3 schema
+VAL -> VAL : Resolve all references\n(ParameterRef, ContainerRef,\nArgumentTypeRef, AlgorithmRef)
+VAL --> LOADER -- : ValidationReport(valid, 0 errors)
+note right of VAL
+  L2-MDB-001: structural and reference
+  integrity is verified before any
+  activation step is attempted
+end note
+
+== Build and index ==
+LOADER -> BUILDER ++ : Build(spaceSystemTree)
+BUILDER -> BUILDER : Freeze immutable MdbModel
+BUILDER -> BUILDER : Index qualified names\nand alias namespaces
+BUILDER --> LOADER -- : MdbModel
+LOADER --> CMD -- : MdbModel + ValidationReport
+
+== Activate ==
+CMD -> REG ++ : Activate(instance, MdbModel)
+REG -> REG : Swap active model reference\nfor runtime TM/TC interpretation
+REG --> CMD -- : activeVersion
+CMD -> AUDIT : Record(mdb-load, instance,\nxtceRef, activeVersion)
+CMD --> API -- : LoadResult(activeVersion, counts)
+API --> OP -- : 200 OK {version,\nparameterCount, commandCount,\ncontainerCount}
+@enduml

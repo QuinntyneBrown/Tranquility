@@ -1,0 +1,40 @@
+@startuml issue-command-nominal
+' Requirements: L1-API-001, L2-API-002, L2-API-005
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title Issue Command - POST /api/processors/{instance}/{processor}/commands/{name} (nominal)
+autonumber
+
+actor "Operator Client" as Client
+participant "HTTP API" as Http
+participant "IssueCommandHandler" as Handler
+participant "Processor Registry" as ProcReg
+participant "MDB Command Resolver" as Mdb
+participant "Command Assembler" as Asm
+queue "Command Queue" as CQ
+database "Audit Log" as Audit
+
+Client -> Http ++ : POST /api/processors/{instance}/{processor}/commands/{name}\n{ "args": { ... }, "comment": "..." }
+note right of Http
+  GIVEN a valid command request
+  WHEN a client posts to the documented
+  Issue Command URI
+  THEN the response contains command identity
+  and assignment fields as documented
+end note
+Http -> Handler ++ : IssueCommandRequest(instance,\nprocessor, name, args)
+Handler -> ProcReg ++ : ResolveProcessor(instance, processor)
+ProcReg --> Handler -- : Processor (realtime)
+Handler -> Mdb ++ : ResolveCommand(name)
+Mdb --> Handler -- : MetaCommand definition
+Handler -> Asm ++ : BuildCommand(MetaCommand, args)
+Asm -> Asm : validate argument types and ranges
+Asm --> Handler -- : PreparedCommand (id, binary,\nassignments[])
+Handler -> CQ : Enqueue(PreparedCommand)
+Handler -> Audit : Record command issuance\n(origin, user, generationTime)
+Handler --> Http -- : IssueCommandResponse(id,\ngenerationTime, origin, sequenceNumber,\nassignments[], binary)
+Http --> Client -- : 200 OK\n{ "id": "...", "generationTime":\n"2026-07-17T12:00:00.000Z",\n"assignments": [ { "name": "...",\n"value": ... } ], ... }
+note right of Client
+  generationTime serialized as
+  UTC ISO 8601 / RFC 3339 (L2-API-005)
+end note
+@enduml

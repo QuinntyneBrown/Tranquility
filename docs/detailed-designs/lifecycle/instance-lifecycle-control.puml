@@ -1,0 +1,69 @@
+@startuml instance-lifecycle-control
+' Requirements: L1-LIF-001
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Instance lifecycle control - start / stop / restart an instance
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "InstanceLifecycleCommandHandler" as CH
+participant "Instance Registry" as REG
+participant "Mission Instance" as INST
+participant "XTCE Loader" as XTCE
+participant "Data Link Manager" as DLM
+database "Audit Log" as AUD
+
+== Start instance ==
+
+OP -> API ++ : POST /api/instances/{instance}:start
+API -> CH ++ : StartInstanceCommand(instanceName)
+CH -> REG ++ : TryGetInstance(instanceName)
+REG --> CH -- : InstanceDescriptor(state)
+
+alt state == OFFLINE
+  CH -> INST ++ : Start()
+  INST -> INST : state := INITIALIZING
+  INST -> XTCE ++ : LoadMissionDatabase(mdbConfig)
+  XTCE --> INST -- : MDB model
+  INST -> DLM ++ : StartConfiguredLinks()
+  DLM --> INST -- : links enabled
+  INST -> INST : state := RUNNING
+  INST --> CH -- : started
+  CH -> AUD : append(instance started, actor, timestamp)
+  CH --> API : InstanceInfo(state=RUNNING)
+  API --> OP : 200 OK { name, state: "RUNNING", ... }
+else state == RUNNING (invalid transition)
+  CH --> API : InstanceStateConflict
+  API --> OP : 409 Conflict { msg: "instance already running" }
+end
+
+== Stop instance ==
+
+OP -> API : POST /api/instances/{instance}:stop
+API -> CH : StopInstanceCommand(instanceName)
+CH -> INST ++ : Stop()
+INST -> INST : state := STOPPING
+INST -> DLM : StopLinks()
+INST -> INST : stop non-persistent processors,\nrelease MDB resources
+INST -> INST : state := OFFLINE
+INST --> CH -- : stopped
+CH -> AUD : append(instance stopped, actor, timestamp)
+CH --> API : InstanceInfo(state=OFFLINE)
+API --> OP : 200 OK { name, state: "OFFLINE", ... }
+
+== Restart instance ==
+
+OP -> API : POST /api/instances/{instance}:restart
+API -> CH : RestartInstanceCommand(instanceName)
+CH -> INST ++ : Stop() then Start()
+INST --> CH -- : state := RUNNING
+CH -> AUD : append(instance restarted, actor, timestamp)
+CH --> API -- : InstanceInfo(state=RUNNING)
+API --> OP -- : 200 OK { name, state: "RUNNING", ... }
+
+note over OP, AUD
+  L1-LIF-001: instance lifecycle operations are managed
+  through documented API behavior; resulting state is
+  observable via the Instances methods (L2-LIF-001).
+end note
+@enduml

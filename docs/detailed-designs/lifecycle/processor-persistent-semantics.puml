@@ -1,0 +1,62 @@
+@startuml processor-persistent-semantics
+' Requirements: L1-LIF-001, L2-LIF-003
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Persistent processor semantics - survival across session-level lifecycle events
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "WebSocket API" as WS
+participant "CreateProcessorCommandHandler" as CH
+participant "Processor Registry" as PREG
+participant "Subscription Manager" as SUB
+participant "Replay Processor" as PROC
+
+== Create processor with persistence option ==
+
+OP -> API ++ : POST /api/processors\n{ instance, name, type: "Archive",\n  persistent: true|false, config }
+API -> CH ++ : CreateProcessorCommand(request)
+CH -> PREG : Register(processor, persistent flag)
+CH --> API -- : ProcessorInfo(persistent)
+API --> OP -- : 200 OK { name, persistent, ... }
+
+== Client attaches over WebSocket ==
+
+OP -> WS ++ : connect + subscribe (processor data)
+WS -> SUB ++ : Attach(clientSession, processor)
+SUB -> PREG : IncrementAttachedClients(processor)
+SUB --> WS -- : subscription active
+WS --> OP -- : streaming updates
+
+== Session-level lifecycle event: last client disconnects ==
+
+OP -> WS ++ : close connection
+WS -> SUB ++ : Detach(clientSession, processor)
+SUB -> PREG ++ : DecrementAttachedClients(processor)
+PREG --> SUB -- : attachedClients == 0
+
+alt persistent == true
+  SUB --> WS : detach complete
+  note over PREG, PROC
+    AC (L2-LIF-003): GIVEN a processor created with
+    persistent=true WHEN processor lifecycle transitions
+    occur THEN persistence behavior matches documented
+    semantics: processor is retained and keeps running;
+    a later client may re-attach to it.
+  end note
+  PROC -> PROC : continue replay,\nstate unchanged
+else persistent == false
+  SUB -> PREG : ScheduleRemoval(processor)
+  PREG -> PROC ++ : Stop()
+  PROC -> PROC : close archive cursor,\nstate := CLOSED
+  PROC --> PREG -- : stopped
+  PREG -> PREG : Unregister(processor)
+  SUB --> WS -- : detach complete
+  note over PREG, PROC
+    Non-persistent processor is disposed when the
+    last attached client detaches (documented
+    default semantics).
+  end note
+end
+WS --> OP -- : connection closed
+@enduml

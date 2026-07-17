@@ -1,0 +1,37 @@
+@startuml derived-parameter-evaluation
+' Requirements: L1-PAR-001
+' Source: docs/specs/parameter-processing/L1.md, docs/specs/parameter-processing/L2.md
+title Derived Parameter Evaluation from Mission Database Definitions
+autonumber
+
+participant "Telemetry Processor" as Proc
+participant "Derived Parameter Evaluator" as Derived
+database "Mission Database (MDB)" as MDB
+database "Parameter Cache" as Cache
+participant "Limit Monitor" as LimitMon
+
+[-> Proc : batch of calibrated parameter samples
+activate Proc
+Proc -> Derived ++ : evaluateDependents(updated parameterRefs)
+Derived -> MDB ++ : algorithms triggered by updated inputs
+MDB --> Derived -- : algorithm definitions\n(input refs, output parameter, expression)
+loop for each triggered algorithm
+  Derived -> Cache : read current input values
+  Cache --> Derived : input samples
+  alt all inputs available and valid
+    Derived -> Derived : execute algorithm
+    Derived --> Proc : derived sample {value,\ngenerationTime inherited from inputs}
+  else missing or invalid input
+    Derived --> Proc : derived sample flagged INVALID,\nno value computed
+  end
+end
+deactivate Derived
+note over Proc, LimitMon
+  L1-PAR-001: derived results are evaluated from
+  mission database definitions and re-enter the
+  pipeline like any decommutated parameter
+end note
+Proc -> LimitMon : derived samples enter limit evaluation
+[<- Proc : derived results included in publication
+deactivate Proc
+@enduml

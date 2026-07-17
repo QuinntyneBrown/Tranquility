@@ -1,0 +1,11 @@
+# Space Data Link Protocol — detailed design
+
+The Space Data Link Protocol (SDL) subsystem is Tranquility's frame-layer boundary between ground-station data links and the packet-processing pipeline. On the downlink side, an infrastructure-level UDP Frame Link hands raw frames to the application-layer Data Link Manager, which resolves the mission-selected CCSDS profile (TM 132.0-B, AOS 732.0-B, or USLP 732.1-B) from the Mission Profile Registry and dispatches to the matching core-domain frame decoder; conforming frames are archived, demultiplexed by virtual channel, and passed to the Packet Extractor for downstream telemetry processing. On the uplink side, the COP-1 FOP Engine drives the TC Frame Assembler and TC Protocol Validator (CCSDS 232.0-B) before CLTU encoding and radiation via the Uplink Data Link. Every profile violation — downlink or uplink — is turned into an explicit, attributable diagnostic (failure reason plus frame context) recorded in the Event Log and pushed to subscribed operator clients over the WebSocket API, so no frame is ever dropped silently.
+
+| Diagram | Behaviour | Requirements |
+|---|---|---|
+| [tm-frame-ingest.puml](tm-frame-ingest.puml) | Nominal ingestion of TM transfer frames per the CCSDS 132.0-B mission profile, through virtual-channel demux to packet extraction | L1-SDL-001, L2-SDL-001 |
+| [aos-frame-ingest.puml](aos-frame-ingest.puml) | Nominal ingestion of AOS transfer frames per the CCSDS 732.0-B mission profile, through virtual-channel demux to packet extraction | L1-SDL-001, L2-SDL-002 |
+| [uslp-frame-ingest.puml](uslp-frame-ingest.puml) | Nominal ingestion of USLP transfer frames per the CCSDS 732.1-B mission profile, through VCID/MAP demux to packet extraction | L1-SDL-001, L2-SDL-003 |
+| [tc-frame-uplink-validation.puml](tc-frame-uplink-validation.puml) | TC transfer frame assembly and protocol validation for uplink (CCSDS 232.0-B): nominal pass through CLTU encoding, plus rejection path with recorded diagnostic | L1-SDL-001, L2-SDL-004, L2-SDL-005 |
+| [frame-validation-diagnostic.puml](frame-validation-diagnostic.puml) | Explicit validation-failure diagnostic for a malformed transfer frame: error recorded with failure reason and frame context, pushed to operators, frame dropped attributably | L1-SDL-002, L2-SDL-005 |

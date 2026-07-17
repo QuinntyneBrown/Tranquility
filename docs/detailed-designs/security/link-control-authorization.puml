@@ -1,0 +1,58 @@
+@startuml link-control-authorization
+' Requirements: L1-SEC-001, L2-SEC-003, L2-SEC-004
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title Link Control - Authorization Check, Audit of Grant and Denial
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "Authorization Service" as AZ
+participant "Link Manager" as LM
+participant "UDP/TCP Data Link" as DL
+participant "Audit Logger" as AUD
+database "Audit Log" as ADB
+
+OP -> API : POST /api/links/{instance}/{link}:disable
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (authenticated user)
+deactivate MW
+API -> AZ : CheckPrivilege(principal, ControlLinks)
+activate AZ
+AZ -> AZ : resolve roles and privilege grants for principal
+
+alt privilege granted
+  AZ --> API : authorized
+  API -> LM : DisableLinkRequest(principal, link)
+  activate LM
+  LM -> DL : stop frame ingest/egress for link
+  activate DL
+  DL --> LM : link driver stopped
+  deactivate DL
+  LM -> AUD : Record(event=link-control, actor=principal,\naction=link-disable({link}), timestamp, outcome=disabled)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> LM : recorded
+  deactivate AUD
+  LM --> API : link status (DISABLED)
+  deactivate LM
+  API --> OP : 200 OK { link, status: DISABLED }
+else privilege missing
+  note right of AZ
+    L2-SEC-003: GIVEN an authenticated user lacking required
+    privilege WHEN privileged control methods are called
+    THEN requests are denied with authorization error.
+  end note
+  AZ --> API : denied (missing ControlLinks)
+  API -> AUD : Record(event=authz-denial, actor=principal,\naction=link-disable({link}), timestamp, outcome=denied)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> API : recorded
+  deactivate AUD
+  API --> OP : 403 Forbidden { authorization error }
+end
+deactivate AZ
+deactivate API
+@enduml

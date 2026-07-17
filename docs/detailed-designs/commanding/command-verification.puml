@@ -1,0 +1,48 @@
+@startuml command-verification
+' Requirements: L1-CMD-001, L2-CMD-005
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Command verification via downlinked telemetry
+autonumber
+
+participant "Command Verifier" as VER
+participant "Telemetry Processor" as TMP
+participant "Spacecraft" as SC
+participant "Ground Station" as GS
+participant "TM Data Link" as TML
+participant "Subscription Manager" as SUB
+database "Command History Store" as HIST
+actor "Operator/Client" as OP
+
+== Verifier armed at dispatch ==
+
+VER -> VER : Arm verifiers from MDB definition\n(Received, Executed, Completed)\nwith check windows per stage
+
+== Telemetry-based confirmation ==
+
+SC --> GS : TM frames (command ack report)
+GS --> TML : frame stream
+TML -> TMP ++ : TM packet
+TMP -> VER ++ : Evaluated parameters\n(ack report values)
+
+alt verifier condition matched within check window
+    VER -> HIST ++ : Append(id, stage="EXECUTION_COMPLETE",\nstatus=OK, time)
+    HIST --> VER --
+    VER -> SUB ++ : Publish command-history update
+    SUB --> OP : WebSocket: command completed
+    SUB --> VER --
+else check window expires without match
+    VER -> HIST ++ : Append(id, stage="EXECUTION_COMPLETE",\nstatus=NOK, reason="verifier timeout")
+    HIST --> VER --
+    VER -> SUB ++ : Publish command-history update
+    SUB --> OP : WebSocket: verification failed
+    SUB --> VER --
+end
+VER --> TMP --
+deactivate TMP
+
+note over VER
+    L1-CMD-001: verification workflow closes the
+    end-to-end command path; each verifier outcome
+    is persisted as a lifecycle stage (L2-CMD-005).
+end note
+@enduml

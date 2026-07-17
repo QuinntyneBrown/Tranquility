@@ -1,0 +1,58 @@
+@startuml frame-validation-diagnostic
+' Requirements: L1-SDL-002, L2-SDL-005
+' Source: docs/specs/space-data-link-protocol/L1.md, docs/specs/space-data-link-protocol/L2.md
+title Transfer Frame Validation Failure Diagnostic (all frame families)
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Frame Link" as UDP
+participant "Data Link Manager" as DLM
+participant "Frame Decoder" as FD
+participant "Diagnostic Recorder" as DR
+database "Event Log" as EL
+participant "Subscription Manager" as SM
+participant "WebSocket API" as WS
+actor "Operator/Client" as OP
+
+== Malformed frame received ==
+GS -> UDP : UDP datagram (malformed transfer frame octets)
+activate UDP
+UDP -> DLM : OnFrameReceived(rawFrame, linkId, receiveTime)
+deactivate UDP
+activate DLM
+DLM -> FD : Decode(rawFrame, missionProfile)
+activate FD
+note right of FD
+  Frame Decoder is the profile-selected decoder
+  (TM 132.0-B, AOS 732.0-B, USLP 732.1-B or TC 232.0-B).
+end note
+FD -> FD : Validation fails (e.g. FECF CRC mismatch, length\nmismatch, unknown SCID/VCID, bad version number)
+FD --> DLM : FrameValidationError(reason, byteOffset, parsedHeaderFields)
+deactivate FD
+
+== Explicit diagnostic emission (no silent frame loss) ==
+DLM -> DR : Report(validationError, frameContext)
+activate DR
+note right of DR
+  frameContext: linkId, receiveTime, frame family,
+  SCID/VCID when parseable, raw frame hex snapshot.
+end note
+DR -> EL : Append(diagnostic { severity=ERROR, reason, frameContext })
+DR -> SM : Publish(LinkDiagnosticEvent)
+activate SM
+SM -> WS : Push(linkDiagnosticEvent) to subscribed sessions
+activate WS
+WS -> OP : link event: frame rejected (reason, frame context)
+deactivate WS
+deactivate SM
+DR --> DLM : diagnosticId
+deactivate DR
+DLM -> DLM : Increment rejectedFrames counter for linkId;\ndrop frame (attributably, never silently)
+deactivate DLM
+
+note over DLM, EL
+  AC L2-SDL-005: GIVEN a malformed transfer frame WHEN validation
+  executes THEN an error diagnostic is recorded with failure reason
+  and frame context. (L1-SDL-002: no silent frame loss.)
+end note
+@enduml

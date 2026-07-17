@@ -1,0 +1,61 @@
+@startuml archive-ingest-recording
+' Requirements: L1-ARC-001
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Archive ingest - recording telemetry, parameters, events, and command history
+autonumber
+actor "Ground Station" as GS
+participant "UDP/TCP Data Link" as Link
+participant "Frame/Packet Parser" as Parser
+participant "Telemetry Processor" as Proc
+participant "Decommutation Engine" as Decom
+participant "Commanding Pipeline" as Cmd
+participant "Archive Recorder" as Rec
+database "Packet Archive Store" as PktStore
+database "Parameter Archive Store" as ParamStore
+database "Event Archive Store" as EvtStore
+database "Command History Store" as CmdStore
+
+== Telemetry packet and parameter recording ==
+GS -> Link : CCSDS TM frames (realtime downlink)
+activate Link
+Link -> Parser : raw frame bytes
+activate Parser
+Parser -> Parser : validate frame headers,\nextract space packets
+Parser -> Proc : space packets
+deactivate Parser
+deactivate Link
+activate Proc
+Proc -> Rec : recordPackets(instance, packets)
+activate Rec
+Rec -> PktStore : append(genTime, apid, packet bytes)
+deactivate Rec
+Proc -> Decom : decommutate(packets)
+activate Decom
+Decom --> Proc : extracted parameter values
+deactivate Decom
+Proc -> Rec : recordParameterValues(instance, values)
+activate Rec
+Rec -> ParamStore : append time-partitioned value segments
+deactivate Rec
+deactivate Proc
+
+== Event recording ==
+Proc -> Rec : recordEvent(instance, event)
+activate Rec
+Rec -> EvtStore : append(genTime, source, severity, message)
+deactivate Rec
+
+== Command history recording ==
+Cmd -> Rec : recordCommandHistoryEntry(instance, entry)
+activate Rec
+Rec -> CmdStore : append(commandId, attributes, acknowledgments)
+deactivate Rec
+
+note over Rec
+  L1-ARC-001: recorded telemetry, parameters, events,
+  and command history are later served for replay through
+  the documented archive API behaviors (see
+  parameter-history-retrieval, stream-parameter-values,
+  parameter-archive-segments, replay-source-retrieval).
+end note
+@enduml

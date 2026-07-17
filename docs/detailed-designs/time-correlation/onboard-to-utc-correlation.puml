@@ -1,0 +1,58 @@
+@startuml onboard-to-utc-correlation
+' Requirements: L1-TIM-001
+' Source: docs/specs/time-correlation/L1.md, docs/specs/time-correlation/L2.md
+title Onboard-to-UTC Time Correlation - Nominal Processing Pipeline
+autonumber
+actor "Spacecraft" as SC
+actor "Ground Station" as GS
+participant "UDP Data Link" as LINK
+participant "Frame Processor" as FP
+participant "Packet Extractor" as PE
+participant "Time Codec (Declared CCSDS Profile)" as CODEC
+participant "Time Correlation Service" as TCO
+participant "Telemetry Processor" as TP
+database "Parameter Archive" as ARC
+
+== Correlation sample collection ==
+loop for each downlinked TM transfer frame
+    SC -> GS : TM frame (onboard clock value latched onboard)
+    GS -> LINK ++ : frame bytes
+    LINK -> LINK : timestamp reception (ERT)
+    LINK -> FP ++ : frame bytes + ERT
+    FP -> FP : validate CCSDS TM frame, extract packet zone
+    FP -> PE ++ : space packets + ERT
+    PE -> CODEC ++ : DecodeOnboardTime(secondary header time field)
+    CODEC --> PE -- : onboard time OBT (per declared CCSDS 301.0-B profile)
+    PE -> TCO ++ : AddSample(obt, ert - timeOfFlight(ert))
+    TCO -> TCO : append (obt, groundTime) pair to sample buffer
+    TCO --> PE -- : sample accepted
+    PE --> FP -- : packets dispatched
+    FP --> LINK -- : frame processed
+    deactivate LINK
+end
+
+== Coefficient computation and deviation check ==
+TCO -> TCO : sample buffer reaches configured sample count
+TCO -> TCO : least-squares fit over samples -> candidate (gradient, offset)
+TCO -> TCO : deviation = |candidate mapping - active mapping|
+alt deviation within accuracy threshold
+    TCO -> TCO : promote candidate to active coefficient set
+else deviation exceeds accuracy threshold
+    TCO -> TP : publish TCO deviation event (correlation quality degraded)
+    TCO -> TCO : retain previous coefficients pending operator action
+end
+
+== Onboard-to-UTC mapping for mission processing ==
+PE -> TP ++ : decommutated parameters with OBT generation time
+TP -> TCO ++ : MapObtToUtc(obt)
+TCO -> TCO : utc = gradient * obt + offset
+TCO --> TP -- : UTC generation time
+TP -> ARC ++ : store parameter values with UTC generation time
+ARC --> TP -- : stored
+deactivate TP
+note over TCO
+    L1-TIM-001: onboard-to-UTC time correlation and
+    CCSDS time-code handling enable ordered analysis
+    and command verification.
+end note
+@enduml

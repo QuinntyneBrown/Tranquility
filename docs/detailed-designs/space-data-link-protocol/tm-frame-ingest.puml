@@ -1,0 +1,57 @@
+@startuml tm-frame-ingest
+' Requirements: L1-SDL-001, L2-SDL-001
+' Source: docs/specs/space-data-link-protocol/L1.md, docs/specs/space-data-link-protocol/L2.md
+title TM Transfer Frame Ingestion (CCSDS 132.0-B mission profile) - Nominal
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Frame Link" as UDP
+participant "Data Link Manager" as DLM
+participant "Mission Profile Registry" as MPR
+participant "TM Frame Decoder" as TMD
+participant "Virtual Channel Demux" as VCD
+participant "Packet Extractor" as PE
+participant "Telemetry Processor" as TP
+database "Frame Archive" as FA
+
+== Link initialization ==
+DLM -> MPR : ResolveProfile(linkId)
+activate MPR
+MPR --> DLM : TmMissionProfile { frameLength, scid, fecfPresent, ocfPresent, secondaryHeader }
+deactivate MPR
+
+== Frame reception and acceptance ==
+loop for each downlinked TM transfer frame
+    GS -> UDP : UDP datagram (TM transfer frame octets)
+    activate UDP
+    UDP -> DLM : OnFrameReceived(rawFrame, linkId, receiveTime)
+    deactivate UDP
+    activate DLM
+    DLM -> TMD : Decode(rawFrame, tmMissionProfile)
+    activate TMD
+    TMD -> TMD : Parse primary header (version, SCID, VCID, MCFC, VCFC, data field status)
+    TMD -> TMD : Check frame length and FECF (CRC-16) against profile
+    alt frame conforms to selected mission profile
+        TMD --> DLM : TmTransferFrame
+        DLM -> FA : Append(rawFrame, linkId, receiveTime)
+        DLM -> VCD : Route(tmTransferFrame) by VCID
+        activate VCD
+        VCD -> PE : ExtractPackets(dataField, firstHeaderPointer)
+        activate PE
+        PE --> VCD : SpacePacket[]
+        deactivate PE
+        VCD -> TP : Deliver(spacePackets)
+        deactivate VCD
+        note right of TP
+          AC L2-SDL-001: GIVEN TM frames compliant with
+          the mission profile WHEN ingested THEN frames are
+          accepted for downstream packet extraction.
+        end note
+    else profile violation detected
+        TMD --> DLM : FrameValidationError(reason, frameContext)
+        ref over DLM, TMD : Diagnostic path: see frame-validation-diagnostic.puml (L1-SDL-002, L2-SDL-005)
+    end
+    deactivate TMD
+    deactivate DLM
+end
+@enduml

@@ -1,0 +1,50 @@
+@startuml transfer-fault-notification
+' Requirements: L1-FDP-001, L2-FDP-003, L2-FDP-004
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title Transfer Fault Handling and Failure Notification
+autonumber
+
+participant "Spacecraft" as SC
+participant "Ground Station" as GS
+participant "UDP Data Link" as LNK
+participant "PDU Router" as PR
+participant "CFDP Transaction" as TXN
+participant "CFDP Engine" as ENG
+participant "Subscription Manager" as SUB
+participant "WebSocket API" as WS
+actor "Operator/Client" as OP
+database "Transfer Archive" as ARC
+
+note over TXN
+    Fault handlers, retry limits, and inactivity
+    timeouts are fixed by the declared baseline
+    CFDP profile (L2-FDP-004).
+end note
+
+== Retransmission attempts per profile ==
+loop until ACK received or profile retry limit reached
+    TXN -> PR ++ : re-emit EOF PDU (retransmission)
+    PR -> LNK : encapsulated PDU
+    LNK -> GS : frame carrying EOF PDU
+    GS -> SC : uplink EOF PDU
+    PR --> TXN -- : no ACK before ack-timer expiry
+end
+
+== Fault declared ==
+TXN -> TXN : positive-ACK limit reached:\ncondition=POSITIVE_ACK_LIMIT_REACHED
+TXN -> ENG ++ : state change RUNNING -> FAILED\n(failureReason="ACK limit reached")
+ENG -> ARC ++ : UpdateTransferRecord(transferId, FAILED,\nfailureReason)
+ARC --> ENG --
+
+== Failure pushed to subscribers ==
+ENG -> SUB ++ : TransferEvent(transferId, FAILED, failureReason)
+deactivate ENG
+SUB -> WS ++ : publish to file-transfers subscriptions
+WS -> OP : data message {TransferInfo: id,\nstate: "FAILED", failureReason}
+deactivate WS
+deactivate SUB
+note right of OP
+    L2-FDP-003: clients need push-based monitoring
+    of transfer progress and failure states.
+end note
+@enduml

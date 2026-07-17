@@ -1,0 +1,44 @@
+@startuml command-queue-inspect
+' Requirements: L1-CMD-001, L2-CMD-002
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Command queue inspection (list queues and queue entries)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "ListQueuesQueryHandler" as LQH
+participant "Queue Manager" as QM
+queue "Command Queue" as CQ
+
+== List queues of a processor ==
+
+OP -> API ++ : GET /api/processors/{instance}/{processor}/queues
+API -> LQH ++ : ListQueuesQuery(instance, processor)
+LQH -> QM ++ : GetQueues(processor)
+QM --> LQH -- : [ { name, state, nbSentCommands,\nnbRejectedCommands, acceptedSignificances } ]
+LQH --> API -- : queue descriptors
+API --> OP -- : 200 OK { queues: [...] }
+
+== List entries of one queue ==
+
+OP -> API ++ : GET /api/processors/{instance}/{processor}/queues/{queue}/entries
+API -> LQH ++ : ListQueueEntriesQuery(queue)
+LQH -> QM ++ : GetEntries(queue)
+
+alt queue name unknown
+    QM --> LQH : QueueNotFound
+    LQH --> API : NotFound
+    API --> OP : 404 Not Found
+else queue exists
+    QM -> CQ ++ : Snapshot()
+    CQ --> QM -- : pending entries
+    QM --> LQH -- : [ { id, origin, sequenceNumber,\ncommandName, binary, username, queuedTime } ]
+    LQH --> API -- : entry list
+    API --> OP -- : 200 OK { entries: [...] }
+end
+
+note over OP, CQ
+    AC L2-CMD-002: GIVEN queued commands WHEN queue API
+    methods are invoked THEN queue state and entries are returned.
+end note
+@enduml

@@ -1,0 +1,44 @@
+@startuml parameter-update-publication
+' Requirements: L1-PAR-001, L2-PAR-003
+' Source: docs/specs/parameter-processing/L1.md, docs/specs/parameter-processing/L2.md
+title Parameter Update Publication with Acquisition and Generation Times
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+database "Mission Database (MDB)" as MDB
+database "Parameter Cache" as Cache
+participant "Telemetry Processor" as Proc
+
+== Subscription setup ==
+Client -> WS ++ : subscribe {type: "parameters", parameterRefs}
+WS -> SubMgr ++ : registerSubscription(clientId, parameterRefs)
+SubMgr -> MDB : resolve parameterRefs
+alt all parameterRefs resolve
+  MDB --> SubMgr : parameter definitions
+  SubMgr -> Cache : read current values
+  Cache --> SubMgr : latest samples
+  SubMgr --> WS -- : subscription accepted + initial values
+  WS --> Client -- : reply {subscriptionId} + initial ParameterData
+else unknown parameter reference
+  MDB --> SubMgr : not found
+  SubMgr --> WS : rejection (invalid parameterRef)
+  WS --> Client : error reply, no subscription created
+end
+
+== Streaming updates ==
+loop for each newly processed sample batch
+  Proc -> SubMgr ++ : publish(processed samples)
+  SubMgr -> SubMgr : match samples against\nactive subscriptions
+  SubMgr -> WS ++ : emit update for subscribed client
+  note right of WS
+    GIVEN a newly processed parameter
+    WHEN update is emitted
+    THEN payload includes acquisitionTime and generationTime
+  end note
+  WS -> Client : ParameterData {parameterRef, rawValue, engValue,\nacquisitionTime, generationTime, monitoringResult}
+  deactivate WS
+  deactivate SubMgr
+end
+@enduml

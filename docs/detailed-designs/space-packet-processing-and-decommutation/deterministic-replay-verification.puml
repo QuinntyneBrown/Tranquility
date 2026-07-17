@@ -1,0 +1,52 @@
+@startuml deterministic-replay-verification
+' Requirements: L1-SPP-001, L2-SPP-003
+' Source: docs/specs/space-packet-processing-and-decommutation/L1.md, docs/specs/space-packet-processing-and-decommutation/L2.md
+title Deterministic Decommutation - Differential Replay Verification
+autonumber
+
+actor "CI Pipeline" as CI
+participant "Replay Harness" as RH
+participant "XTCE Loader" as XL
+participant "Mission Database (MDB)" as MDB
+participant "Decommutation Engine" as DE
+database "Packet Corpus Store" as CORP
+database "Replay Output Store" as OUT
+
+CI -> RH ++ : run differential replay\n(corpus id, pinned MDB version)
+RH -> XL ++ : load MDB at pinned version
+XL -> MDB : build immutable MDB instance
+XL --> RH -- : MDB handle + version hash
+
+== Pass 1 ==
+RH -> CORP ++ : read packet corpus
+CORP --> RH -- : ordered packet byte records
+loop for each packet in corpus
+  RH -> DE ++ : decommutate(packet bytes, MDB)
+  DE --> RH -- : extracted values + timestamps
+  RH -> OUT : append canonical output record (pass 1)
+end
+
+== Pass 2 ==
+loop for each packet in corpus
+  RH -> DE ++ : decommutate(same packet bytes, same MDB)
+  DE --> RH -- : extracted values + timestamps
+  RH -> OUT : append canonical output record (pass 2)
+end
+
+== Comparison ==
+RH -> OUT ++ : compare pass 1 records\nagainst pass 2 records
+OUT --> RH -- : comparison result
+note over RH
+  L2-SPP-003 acceptance:
+  GIVEN repeated runs of the same packet corpus
+  with the same MDB
+  WHEN outputs are compared
+  THEN extracted values and timestamps are identical.
+end note
+alt outputs identical
+  RH --> CI : PASS - decommutation is deterministic
+else any value or timestamp differs
+  RH --> CI : FAIL - determinism violation report\n(first divergent packet, parameter,\npass-1 vs pass-2 values); non-zero exit
+end
+deactivate RH
+@enduml

@@ -1,0 +1,51 @@
+@startuml divergence-triage
+' Requirements: L2-DIF-003, L1-DIF-001
+' Source: docs/specs/differential-conformance/L1.md, docs/specs/differential-conformance/L2.md
+title Divergence triage classification - accept valid class, reject invalid
+autonumber
+
+actor "Conformance Engineer" as Eng
+participant "HTTP API" as API
+participant "TriageDivergenceHandler" as Handler
+database "Divergence Store" as Div
+database "Audit Log" as Audit
+
+Eng -> API ++ : GET /api/differential/divergences?state=UNTRIAGED
+API -> Div ++ : QueryUntriaged()
+Div --> API -- : pending divergence entries
+API --> Eng -- : 200 OK [ { divergenceId, surface,\nsutValue, refValue, context } ]
+
+Eng -> API ++ : POST /api/differential/divergences/{id}/triage\n{ class, justification }
+API -> Handler ++ : TriageDivergenceCommand(id, class, justification)
+Handler -> Div ++ : GetDivergence(id)
+
+alt divergence exists and class is one of the defined triage classes
+    Div --> Handler -- : divergence entry (state: UNTRIAGED)
+    Handler -> Handler : validate class in\n[TRANQUILITY_DEFECT,\nREFERENCE_BEHAVIOR_OUTSIDE_STANDARD,\nSTANDARD_AMBIGUITY]
+    Handler -> Div ++ : UpdateTriage(id, class,\njustification, state: TRIAGED)
+    Div --> Handler -- : updated
+    Handler -> Audit ++ : append TRIAGE_RECORDED\n{ divergenceId, class, engineer }
+    Audit --> Handler -- : recorded
+    Handler --> API -- : TriageAccepted
+    API --> Eng -- : 200 OK { divergenceId, class, state: TRIAGED }
+    note right of Handler
+      AC L2-DIF-003: GIVEN a divergence entry WHEN triage
+      is completed THEN classification is one of: Tranquility
+      defect, reference behavior outside standard, or
+      standard ambiguity.
+    end note
+else class is not a defined triage class
+    Div --> Handler : divergence entry (state: UNTRIAGED)
+    deactivate Div
+    Handler -> Handler : validation fails: class not in defined set
+    Handler --> API -- : ValidationError(INVALID_TRIAGE_CLASS)
+    API --> Eng -- : 400 Bad Request\n{ error: "class must be one of the defined triage classes" }
+else divergence id unknown
+    Div --> Handler : not found
+    deactivate Div
+    Handler --> API : NotFound
+    deactivate Handler
+    API --> Eng : 404 Not Found { divergenceId }
+    deactivate API
+end
+@enduml

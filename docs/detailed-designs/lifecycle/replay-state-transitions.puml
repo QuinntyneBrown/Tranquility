@@ -1,0 +1,86 @@
+@startuml replay-state-transitions
+' Requirements: L1-LIF-001, L2-LIF-004
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Replay state transitions - exposed processor state fields across start / pause / resume / stop
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "WebSocket API" as WS
+participant "EditProcessorCommandHandler" as CH
+participant "Replay Processor" as PROC
+participant "Replay Engine" as RE
+participant "Subscription Manager" as SUB
+database "Archive Store" as ARC
+
+== Subscribe to processor state ==
+
+OP -> WS ++ : subscribe processors\n(instance, processor)
+WS -> SUB ++ : AddStateSubscription(session, processor)
+SUB --> WS -- : subscribed
+WS --> OP : initial ProcessorInfo\n(state, replayState fields)
+
+== Replay starts ==
+
+OP -> API ++ : PATCH /api/processors/{instance}/{processor}\n{ state: "running" }
+API -> CH ++ : EditProcessorCommand(state=running)
+CH -> PROC ++ : Resume()
+PROC -> RE ++ : StartPlayback()
+loop while cursor has data and state == RUNNING
+  RE -> ARC ++ : ReadNextBatch(cursor)
+  ARC --> RE -- : archived telemetry batch
+  RE -> PROC : emit batch to processing pipeline
+end
+PROC -> PROC : replayState := PLAYING,\nstate := RUNNING
+PROC -> SUB : PublishStateChange(ProcessorInfo)
+SUB -> WS : push update
+WS -> OP : ProcessorInfo { state: "RUNNING",\nreplayState: "PLAYING" }
+PROC --> CH -- : updated
+CH --> API -- : ProcessorInfo
+API --> OP -- : 200 OK
+
+== Replay pauses ==
+
+OP -> API ++ : PATCH { state: "paused" }
+API -> CH ++ : EditProcessorCommand(state=paused)
+CH -> PROC ++ : Pause()
+PROC -> RE : SuspendPlayback()
+PROC -> PROC : replayState := PAUSED
+PROC -> SUB : PublishStateChange(ProcessorInfo)
+SUB -> WS : push update
+WS -> OP : ProcessorInfo { replayState: "PAUSED" }
+PROC --> CH -- : updated
+CH --> API -- : ProcessorInfo
+API --> OP -- : 200 OK
+
+== Replay resumes ==
+
+OP -> API ++ : PATCH { state: "running" }
+API -> CH ++ : EditProcessorCommand(state=running)
+CH -> PROC ++ : Resume()
+PROC -> RE : ResumePlayback()
+PROC -> PROC : replayState := PLAYING
+PROC -> SUB : PublishStateChange(ProcessorInfo)
+SUB -> WS : push update
+WS -> OP : ProcessorInfo { replayState: "PLAYING" }
+PROC --> CH -- : updated
+CH --> API -- : ProcessorInfo
+API --> OP -- : 200 OK
+
+== Replay stops (end of range or delete) ==
+
+RE -> RE : cursor exhausted (stop time reached)
+RE --> PROC -- : playback complete
+PROC -> PROC : replayState := STOPPED
+PROC -> SUB : PublishStateChange(ProcessorInfo)
+SUB -> WS : push update
+WS --> OP -- : ProcessorInfo { replayState: "STOPPED" }
+
+note over OP, ARC
+  AC (L2-LIF-004): GIVEN a replay processor WHEN replay
+  starts, pauses, and stops THEN exposed replay-state
+  fields reflect those transitions. State is observable
+  both by polling GET processor info and by WebSocket
+  state subscription push.
+end note
+@enduml

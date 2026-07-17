@@ -1,0 +1,53 @@
+@startuml cop1-retransmission
+' Requirements: L1-CMD-001, L2-CMD-003
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title COP-1 retransmission and alert (alternate flows per mission profile)
+autonumber
+
+participant "Command Dispatcher" as DISP
+participant "COP-1 FOP Engine" as FOP
+participant "CLTU Encoder" as CLTU
+participant "TC Data Link" as LINK
+participant "Ground Station" as GS
+participant "Spacecraft" as SC
+participant "Alarm Service" as ALM
+
+== Trigger: negative acknowledgement or timer expiry ==
+
+alt CLCW reports retransmit flag
+    SC --> GS : CLCW (retransmit=1, N(R) stalled)
+    GS --> LINK : CLCW report
+    LINK --> FOP ++ : CLCW
+    FOP -> FOP : State S1 (Active) -> S2 (Retransmit without wait)
+else Timer expires before acknowledgement
+    FOP -> FOP ++ : Timer expiry event\ntransmission_count = transmission_count + 1
+end
+
+alt transmission_count <= transmission_limit
+    loop for each unacknowledged frame in sent_queue (ascending sequence number)
+        FOP -> CLTU ++ : Encode(AD frame, original V(S))
+        CLTU --> FOP -- : CLTU
+        FOP -> LINK ++ : Radiate(CLTU)
+        LINK -> GS : uplink CLTU
+        GS -> SC : RF uplink
+        LINK --> FOP -- : radiated
+    end
+    FOP -> FOP : Restart Timer
+    SC --> GS : CLCW (N(R) advanced, retransmit=0)
+    GS --> LINK : CLCW report
+    LINK --> FOP : CLCW
+    FOP -> FOP : State S2 -> S1 (Active),\nacknowledge frames, reset transmission_count
+    FOP --> DISP : positive confirm
+else transmission_limit exceeded
+    FOP -> FOP : Alert(T1 timeout)\nState -> S6 (Initial), purge sent_queue
+    FOP -> ALM ++ : Raise COP-1 alert (link suspect)
+    ALM --> FOP --
+    FOP --> DISP -- : negative confirm\n(pending frames aborted)
+end
+
+note over FOP
+    AC L2-CMD-003: alternate protocol paths (retransmission,
+    timer-based alert) follow the selected COP-1 profile;
+    transmission_limit and timeout come from mission defaults.
+end note
+@enduml

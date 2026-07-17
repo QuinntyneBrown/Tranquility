@@ -1,0 +1,46 @@
+@startuml clean-room-evidence-audit
+' Requirements: L2-DIF-004, L1-DIF-001
+' Source: docs/specs/differential-conformance/L1.md, docs/specs/differential-conformance/L2.md
+title Clean-room evidence audit - external-observation-only harness design review
+autonumber
+
+actor "CI Pipeline" as CI
+participant "Harness Manifest Scanner" as Scanner
+database "Harness Repository\n(manifests, adapters, deps)" as Repo
+database "Audit Log" as Audit
+actor "Design Reviewer" as Reviewer
+
+== Stage 1: automated scan on every harness change ==
+CI -> Scanner ++ : ScanHarness(commitSha)
+Scanner -> Repo ++ : read dependency manifest\nand observation adapter inventory
+Repo --> Scanner -- : dependency list + adapter list
+Scanner -> Scanner : verify every observation adapter targets\nan external interface only (HTTP API,\nWebSocket API, UDP/TCP link captures)
+Scanner -> Scanner : verify no reference source-code artifact\n(source trees, internal headers, decompiled\nbinaries, private symbols) is required
+
+alt no reference source-code artifacts required
+    Scanner -> Audit ++ : append CLEANROOM_SCAN_PASS\n{ commitSha, adapterInventory }
+    Audit --> Scanner -- : evidence recorded
+    Scanner --> CI -- : ScanPassed { evidenceReportId }
+    == Stage 2: design review inspection ==
+    CI -> Reviewer : publish evidence report for review
+    Reviewer -> Audit ++ : inspect evidence\n{ adapter inventory, dependency list }
+    Audit --> Reviewer -- : evidence report
+    Reviewer -> Audit ++ : append REVIEW_APPROVED\n{ commitSha, reviewer }
+    Audit --> Reviewer -- : recorded
+    note right of Reviewer
+      AC L2-DIF-004: GIVEN harness design review WHEN
+      evidence is inspected THEN no reference source-code
+      artifacts are required by the harness.
+    end note
+else reference source-code artifact detected
+    Scanner -> Audit ++ : append CLEANROOM_SCAN_FAIL\n{ commitSha, offendingArtifact }
+    Audit --> Scanner -- : evidence recorded
+    Scanner --> CI -- : ScanFailed { offendingArtifact }
+    deactivate Scanner
+    CI -> CI : fail build - harness change blocked\nuntil artifact removed
+    note right of CI
+      Clean-room integrity requires avoiding reference
+      source-code dependence (L2-DIF-004 rationale).
+    end note
+end
+@enduml

@@ -1,0 +1,49 @@
+@startuml tls-websocket-transport
+' Requirements: L1-SEC-002, L2-SEC-005
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title TLS-Protected WebSocket API Transport (production deployment)
+autonumber
+
+actor "Client" as CL
+participant "Kestrel TLS Endpoint" as TLS
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SUB
+
+note over CL, SUB
+  L2-SEC-005: GIVEN a production deployment
+  WHEN clients connect to API endpoints
+  THEN transport is established over TLS (wss scheme).
+end note
+
+== TLS handshake ==
+CL -> TLS : ClientHello (TLS 1.2+ offered)
+activate TLS
+TLS --> CL : ServerHello, server certificate, key share
+CL -> TLS : key exchange, Finished
+TLS --> CL : Finished (encrypted session established)
+deactivate TLS
+
+== WebSocket upgrade over TLS ==
+CL -> WS : GET /api/websocket (Upgrade: websocket, wss scheme)
+activate WS
+WS --> CL : 101 Switching Protocols
+
+== Subscription traffic over encrypted channel ==
+loop while subscription active
+  CL -> WS : subscribe message (encrypted frame)
+  WS -> SUB : register subscription
+  activate SUB
+  SUB --> WS : subscription confirmed
+  deactivate SUB
+  WS --> CL : data messages (encrypted frames)
+end
+deactivate WS
+
+== Cleartext attempt (production) ==
+opt client attempts plain ws://
+  CL -> TLS : cleartext upgrade request
+  activate TLS
+  TLS --> CL : connection refused (no cleartext listener in production)
+  deactivate TLS
+end
+@enduml

@@ -1,0 +1,47 @@
+@startuml alarm-transition-notification
+' Requirements: L1-PAR-001, L2-PAR-004
+' Source: docs/specs/parameter-processing/L1.md, docs/specs/parameter-processing/L2.md
+title Alarm Transition Notification on Monitoring Level Change
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+participant "Limit Monitor" as LimitMon
+participant "Alarm Manager" as Alarm
+database "Parameter Cache" as Cache
+
+== Precondition: alarm subscription active ==
+Client -> WS ++ : subscribe {type: "alarms"}
+WS -> SubMgr ++ : registerSubscription(clientId, alarms)
+SubMgr --> WS -- : subscription accepted
+WS --> Client -- : reply {subscriptionId}
+
+== Transition detection ==
+[-> LimitMon : parameter sample evaluated
+activate LimitMon
+LimitMon -> Alarm ++ : stateReport(parameterRef, previousLevel, currentLevel)
+alt transition in-limits to out-of-limits (e.g. IN_LIMITS -> CRITICAL)
+  note right of Alarm
+    GIVEN a parameter transition from in-limits to out-of-limits
+    WHEN processing runs
+    THEN an alarm transition notification is observable through the API
+  end note
+  Alarm -> Alarm : create alarm instance,\nincrement sequence number
+  Alarm -> Cache : persist alarm state
+  Alarm -> SubMgr ++ : alarmTransition {parameterRef, previousLevel,\ncurrentLevel, triggerValue, triggerTime}
+  SubMgr -> WS ++ : emit AlarmData to subscribed clients
+  WS -> Client : AlarmData notification
+  deactivate WS
+  deactivate SubMgr
+else transition out-of-limits back to in-limits
+  Alarm -> Alarm : mark alarm returned-to-normal
+  Alarm -> SubMgr : alarmTransition {returned-to-normal}
+  SubMgr -> WS : emit AlarmData update
+  WS -> Client : AlarmData notification (cleared level)
+else level unchanged
+  Alarm --> LimitMon : no notification emitted
+end
+deactivate Alarm
+deactivate LimitMon
+@enduml

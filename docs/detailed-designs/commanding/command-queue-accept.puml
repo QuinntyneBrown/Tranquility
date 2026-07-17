@@ -1,0 +1,41 @@
+@startuml command-queue-accept
+' Requirements: L1-CMD-001, L2-CMD-002, L2-CMD-005
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Command queue entry accept (release command for dispatch)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "AcceptQueueEntryHandler" as AQH
+participant "Queue Manager" as QM
+queue "Command Queue" as CQ
+participant "Command Dispatcher" as DISP
+database "Command History Store" as HIST
+
+OP -> API ++ : POST /api/processors/{instance}/{processor}\n/queues/{queue}/entries/{entry}:accept
+API -> AQH ++ : AcceptQueueEntryCommand(queue, entry, user)
+AQH -> QM ++ : Accept(queue, entry)
+QM -> CQ ++ : Remove(entry)
+
+alt entry not found in queue
+    CQ --> QM : miss
+    QM --> AQH : EntryNotFound
+    AQH --> API : NotFound
+    API --> OP : 404 Not Found (entry already released,\nrejected, or unknown)
+else entry present
+    CQ --> QM -- : entry { id, binary, commandName }
+    QM --> AQH -- : accepted entry
+    AQH -> HIST ++ : PersistStage(id, "RELEASED", user, time)
+    HIST --> AQH --
+    AQH -> DISP ++ : Dispatch(entry.binary)
+    DISP --> AQH -- : dispatch scheduled
+    AQH --> API -- : updated queue contents
+    API --> OP -- : 200 OK { entry removed,\nremaining entries }
+    note right of OP
+        AC L2-CMD-002: accept actions
+        update queue contents.
+        AC L2-CMD-005: released commands
+        gain a lifecycle history record.
+    end note
+end
+@enduml

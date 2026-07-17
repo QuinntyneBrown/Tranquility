@@ -1,0 +1,60 @@
+@startuml queue-action-authorization
+' Requirements: L1-SEC-001, L2-SEC-003, L2-SEC-004
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title Command Queue Action - Authorization Check, Audit of Grant and Denial
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "Authorization Service" as AZ
+participant "Queue Manager" as QM
+queue "Command Queue" as CQ
+participant "Audit Logger" as AUD
+database "Audit Log" as ADB
+
+OP -> API : POST /api/processors/{instance}/{processor}/queues/{queue}:enable
+activate API
+note right of API
+  Queue actions (enable, disable, block) gate the
+  release of queued commands toward the uplink.
+end note
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (authenticated user)
+deactivate MW
+API -> AZ : CheckPrivilege(principal, ControlCommandQueue)
+activate AZ
+AZ -> AZ : resolve roles and privilege grants for principal
+
+alt privilege granted
+  AZ --> API : authorized
+  API -> QM : EnableQueueRequest(principal, queue)
+  activate QM
+  QM -> CQ : set queue state = ENABLED
+  QM -> CQ : release eligible queued commands
+  QM -> AUD : Record(event=queue-action, actor=principal,\naction=queue-enable({queue}), timestamp, outcome=enabled)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> QM : recorded
+  deactivate AUD
+  QM --> API : queue state (ENABLED)
+  deactivate QM
+  API --> OP : 200 OK { queue, state: ENABLED }
+else privilege missing
+  note right of AZ
+    L2-SEC-003: GIVEN an authenticated user lacking required
+    privilege WHEN privileged control methods are called
+    THEN requests are denied with authorization error.
+  end note
+  AZ --> API : denied (missing ControlCommandQueue)
+  API -> AUD : Record(event=authz-denial, actor=principal,\naction=queue-enable({queue}), timestamp, outcome=denied)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> API : recorded
+  deactivate AUD
+  API --> OP : 403 Forbidden { authorization error }
+end
+deactivate AZ
+deactivate API
+@enduml

@@ -1,0 +1,65 @@
+@startuml cfdp-uplink-transaction
+' Requirements: L1-FDP-001, L2-FDP-001, L2-FDP-004
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title CFDP Uplink Transaction - Nominal PDU Exchange (Baseline Profile, Acknowledged Mode)
+autonumber
+
+participant "CFDP Engine" as ENG
+participant "CFDP Transaction" as TXN
+database "Object Store" as OBJ
+participant "PDU Router" as PR
+participant "UDP Data Link" as LNK
+participant "Ground Station" as GS
+participant "Spacecraft" as SC
+
+note over ENG, SC
+    L2-FDP-004: all PDU parameters (transmission mode, checksum type,
+    segment size, EOF/Finished handshake) follow the single declared
+    baseline CFDP profile (CCSDS 727.0-B, TBD-008).
+end note
+
+== Metadata phase ==
+ENG -> TXN ++ : Start(transactionId, sourceEntity, destinationEntity)
+TXN -> OBJ ++ : OpenRead(bucket, objectName)
+OBJ --> TXN -- : stream (fileSize, checksum)
+TXN -> PR ++ : Metadata PDU (fileSize, source filename,\ndestination remotePath, checksum type)
+PR -> LNK ++ : encapsulated PDU
+LNK -> GS : frame carrying Metadata PDU
+GS -> SC : uplink Metadata PDU
+LNK --> PR --
+PR --> TXN --
+
+== File Data phase ==
+loop for each file segment (profile segment size)
+    TXN -> PR ++ : File Data PDU (offset, segment bytes)
+    PR -> LNK ++ : encapsulated PDU
+    LNK -> GS : frame carrying File Data PDU
+    GS -> SC : uplink File Data PDU
+    LNK --> PR --
+    PR --> TXN --
+    TXN -> ENG : progress event (bytesTransferred)
+end
+
+== EOF / Finished handshake ==
+TXN -> PR ++ : EOF PDU (condition=NO_ERROR,\nfile checksum, fileSize)
+PR -> LNK : encapsulated PDU
+LNK -> GS : frame carrying EOF PDU
+GS -> SC : uplink EOF PDU
+SC --> GS : ACK (EOF) PDU
+GS --> LNK : downlink ACK (EOF) PDU
+LNK --> PR : ACK (EOF) PDU
+PR --> TXN : ACK (EOF) received
+SC --> GS : Finished PDU (delivery complete,\nfile status=RETAINED)
+GS --> LNK : downlink Finished PDU
+LNK --> PR : Finished PDU
+PR --> TXN -- : Finished (NO_ERROR)
+TXN -> PR : ACK (Finished) PDU toward spacecraft
+TXN -> ENG : state change RUNNING -> COMPLETED
+deactivate TXN
+
+note right of ENG
+    Transaction completion is published to the
+    Subscription Manager (see
+    transfer-status-subscription.puml).
+end note
+@enduml

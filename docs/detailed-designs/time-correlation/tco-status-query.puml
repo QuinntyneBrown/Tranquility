@@ -1,0 +1,36 @@
+@startuml tco-status-query
+' Requirements: L1-TIM-001, L2-TIM-001
+' Source: docs/specs/time-correlation/L1.md, docs/specs/time-correlation/L2.md
+title TCO Status Query - GET /api/tco/{instance}/{serviceName}/status
+autonumber
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "GetTcoStatus Query Handler" as QH
+participant "Instance Registry" as REG
+participant "Time Correlation Service" as TCO
+
+OP -> API ++ : GET /api/tco/{instance}/{serviceName}/status
+API -> QH ++ : GetTcoStatusQuery(instance, serviceName)
+QH -> REG ++ : ResolveTcoService(instance, serviceName)
+REG --> QH -- : service handle or NotFound
+alt configured TCO service resolved
+    QH -> TCO ++ : GetStatus()
+    TCO -> TCO : read active coefficients (coefficientTime, gradient, offset)
+    TCO -> TCO : read sample buffer state (samples[], count, capacity)
+    TCO -> TCO : read deviation state (lastDeviation, accuracy, validity)
+    TCO --> QH -- : TcoStatus snapshot
+    QH --> API : TcoStatus DTO
+    API --> OP : 200 OK {coefficientTime, coefficients{gradient, offset}, deviation, samples[]}
+    note right of OP
+        AC L2-TIM-001: GIVEN a configured TCO service
+        WHEN status endpoint is called
+        THEN payload includes coefficient and
+        sample status fields.
+    end note
+else unknown instance or serviceName
+    QH --> API : ServiceNotFound
+    API --> OP : 404 Not Found {message}
+end
+deactivate QH
+deactivate API
+@enduml

@@ -1,0 +1,53 @@
+@startuml transfer-create
+' Requirements: L1-FDP-001, L2-FDP-001
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title Transfer Creation - POST /api/filetransfer/{instance}/{serviceName}/transfers
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Instance Registry" as REG
+participant "CreateTransferHandler" as CTH
+participant "CFDP Engine" as ENG
+database "Object Store" as OBJ
+database "Transfer Archive" as ARC
+database "Audit Log" as AUD
+
+OP -> API ++ : POST /api/filetransfer/{instance}/{serviceName}/transfers\n{direction, bucket, objectName, remotePath, destinationEntityId, options}
+API -> REG ++ : ResolveFileTransferService(instance, serviceName)
+
+alt instance or serviceName unknown
+    REG --> API : NotFound
+    API --> OP : 404 Not Found\n{message: "no such file transfer service"}
+else caller lacks FileTransfer privilege
+    REG --> API : service reference
+    API -> API : Authorize(caller, "ManageFileTransfers")
+    API --> OP : 403 Forbidden
+else request valid
+    REG --> API -- : service reference
+    API -> CTH ++ : CreateTransferCommand
+    CTH -> OBJ ++ : StatObject(bucket, objectName)
+    alt source object missing (UPLOAD direction)
+        OBJ --> CTH : not found
+        CTH --> API : ValidationError
+        API --> OP : 400 Bad Request\n{message: "object not found in bucket"}
+    else source object resolved
+        OBJ --> CTH -- : object metadata (size, checksum)
+        CTH -> ENG ++ : StartTransfer(sourceEntity, destinationEntity,\nremotePath, transmissionMode per declared profile)
+        ENG -> ENG : allocate transaction id,\ncreate CFDP Transaction (state=RUNNING)
+        ENG --> CTH -- : transferId, state=RUNNING
+        CTH -> ARC ++ : InsertTransferRecord(transferId, CREATED->RUNNING)
+        ARC --> CTH --
+        CTH -> AUD ++ : Append(caller, "transfer.create", transferId)
+        AUD --> CTH --
+        CTH --> API -- : TransferInfo
+        API --> OP -- : 200 OK\n{id, state: "RUNNING", direction, bucket,\nobjectName, remotePath, creationTime}
+        note right of OP
+            L2-FDP-001 AC: GIVEN a valid transfer request
+            WHEN posted to the create-transfer URI
+            THEN a transfer identifier and initial
+            transfer state are returned.
+        end note
+    end
+end
+@enduml

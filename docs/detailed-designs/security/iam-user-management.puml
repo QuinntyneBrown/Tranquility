@@ -1,0 +1,78 @@
+@startuml iam-user-management
+' Requirements: L1-SEC-001, L2-SEC-001
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title IAM User Resource Operations (list, create, update)
+autonumber
+
+actor "Administrator" as ADM
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "IAM Handler" as IAM
+database "IAM Store" as DB
+
+note over ADM, DB
+  L2-SEC-001: GIVEN an authenticated administrator
+  WHEN IAM list/create/update methods are called
+  THEN responses follow documented IAM resource structures.
+end note
+
+== List users ==
+ADM -> API : GET /api/iam/users
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : ListUsersQuery
+activate IAM
+IAM -> DB : select user records
+activate DB
+DB --> IAM : user rows
+deactivate DB
+IAM --> API : ListUsersResponse (documented user resource structure)
+deactivate IAM
+API --> ADM : 200 OK { users: [ { name, displayName, email, roles } ] }
+deactivate API
+
+== Create user ==
+ADM -> API : POST /api/iam/users { name, displayName, email, roles }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : CreateUserCommand
+activate IAM
+IAM -> IAM : validate name uniqueness and role references
+IAM -> DB : insert user record
+activate DB
+DB --> IAM : stored
+deactivate DB
+IAM --> API : UserResource
+deactivate IAM
+API --> ADM : 201 Created { user }
+deactivate API
+
+== Update user ==
+ADM -> API : PATCH /api/iam/users/{name} { displayName, roles }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : UpdateUserCommand
+activate IAM
+IAM -> DB : load user record
+activate DB
+DB --> IAM : user row
+deactivate DB
+IAM -> IAM : apply field mask, validate role references
+IAM -> DB : persist updated record
+activate DB
+DB --> IAM : stored
+deactivate DB
+IAM --> API : UserResource (updated)
+deactivate IAM
+API --> ADM : 200 OK { user }
+deactivate API
+@enduml

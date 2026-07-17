@@ -1,0 +1,46 @@
+@startuml processor-state-subscription
+' Requirements: L2-RTS-003, L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Processor State Subscription - Push Updates Without Polling
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+participant "Instance Registry" as IR
+participant "Telemetry Processor" as Proc
+
+== Subscribe to processors topic ==
+
+Client -> WS ++ : { type: "processors", id: 1,\n  options: { instance, processor } }
+WS -> SubMgr ++ : CreateProcessorSubscription(session, options)
+SubMgr -> IR ++ : ResolveProcessor(instance, processor)
+IR --> SubMgr -- : processor handle
+SubMgr -> IR : RegisterStateListener(subscription)
+SubMgr --> WS -- : call = c, current state
+WS --> Client : { type: "reply", seq: n, data: { replyTo: 1, call: c } }
+WS --> Client : { type: "processors", call: c, seq: n+1,\n  data: { name, type, state: "RUNNING" } }
+deactivate WS
+
+== Runtime state change is pushed ==
+
+note over SubMgr, Proc
+  Acceptance (L2-RTS-003): GIVEN active processor
+  subscriptions WHEN runtime state changes THEN state
+  updates are emitted without polling.
+end note
+
+loop each processor state transition
+  Proc -> IR ++ : NotifyStateChange(processor,\n  e.g. RUNNING -> PAUSED on replay pause)
+  IR -> SubMgr ++ : OnProcessorStateChanged(info)
+  deactivate IR
+  SubMgr -> WS ++ : Emit(call = c, processor info)
+  deactivate SubMgr
+  WS --> Client : { type: "processors", call: c, seq: n+i,\n  data: { name, state: "PAUSED", replayState } }
+  deactivate WS
+  note right of Client
+    The client never issues a poll request;
+    every transition arrives as a push.
+  end note
+end
+@enduml

@@ -1,0 +1,53 @@
+@startuml auth-token-issue
+' Requirements: L1-SEC-001, L2-SEC-002, L2-SEC-004
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title Authentication - Bearer Token Issue (nominal and invalid credentials)
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "Token Service" as TOK
+database "IAM Store" as IAMDB
+participant "Audit Logger" as AUD
+database "Audit Log" as ADB
+
+OP -> API : POST /auth/token { username, password }
+activate API
+note right of API
+  Connection is TLS-protected in production
+  (see L2-SEC-005 transport diagrams).
+end note
+API -> TOK : ValidateCredentials(username, password)
+activate TOK
+TOK -> IAMDB : FindUser(username)
+activate IAMDB
+IAMDB --> TOK : user record (password hash, roles) or not found
+deactivate IAMDB
+
+alt credentials valid
+  TOK -> TOK : verify password hash
+  TOK -> TOK : sign bearer token (subject, roles, expiry)
+  TOK -> AUD : Record(event=auth-success, actor=username,\naction=token-issue, timestamp, outcome=success)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> TOK : recorded
+  deactivate AUD
+  TOK --> API : TokenResponse(access_token, expires_in)
+  API --> OP : 200 OK { access_token, token_type, expires_in }
+else credentials invalid or user unknown
+  TOK -> AUD : Record(event=auth-failure, actor=username,\naction=token-issue, timestamp, outcome=denied)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> TOK : recorded
+  deactivate AUD
+  TOK --> API : CredentialValidationFailed
+  API --> OP : 401 Unauthorized
+end
+deactivate TOK
+deactivate API
+
+note over AUD, ADB
+  L2-SEC-004: authentication events are recorded with
+  actor, action, timestamp, and outcome; the store is append-only.
+end note
+@enduml

@@ -1,0 +1,50 @@
+@startuml link-reset-counters
+' Requirements: L1-LNK-001, L2-LNK-002, L2-LNK-004
+' Source: docs/specs/data-links/L1.md, docs/specs/data-links/L2.md
+title Reset link counters (POST /api/links/{instance}/{link}:resetCounters)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Service" as AUTHZ
+participant "ResetLinkCountersCommandHandler" as CH
+participant "Link Manager" as LM
+participant "UDP TM Link" as LINK
+database "Audit Log" as AUD
+
+OP -> API ++ : POST /api/links/{instance}/{link}:resetCounters
+API -> AUTHZ ++ : CheckPrivilege(caller, ControlLinks)
+
+alt caller holds ControlLinks privilege
+    AUTHZ --> API -- : granted
+    API -> CH ++ : ResetLinkCountersCommand(instance, link)
+    CH -> LM ++ : FindLink(instance, link)
+
+    alt link exists
+        LM --> CH -- : LinkHandle
+        CH -> LINK ++ : ResetCounters()
+        LINK -> LINK : dataInCount = 0\ndataOutCount = 0
+        LINK --> CH -- : ok
+        note right of LINK
+          Counters restart from zero and remain
+          nondecreasing until the next reset
+          (link information model, L2-LNK-004).
+        end note
+        CH -> AUD ++ : Record(caller, "link.resetCounters", instance, link)
+        AUD --> CH --
+        CH --> API -- : LinkInfo { dataInCount: 0, dataOutCount: 0 }
+        API --> OP : 200 OK { name, dataInCount: 0,\ndataOutCount: 0, ... }
+    else link unknown
+        LM --> CH : NotFound
+        deactivate LM
+        CH --> API : LinkNotFoundError
+        deactivate CH
+        API --> OP : 404 Not Found { message: "unknown link" }
+    end
+else caller lacks privilege
+    AUTHZ --> API : denied
+    deactivate AUTHZ
+    API --> OP : 403 Forbidden { message: "ControlLinks privilege required" }
+    deactivate API
+end
+@enduml

@@ -1,0 +1,51 @@
+@startuml stream-parameter-values
+' Requirements: L1-ARC-001, L2-ARC-002
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Server-streaming parameter replay - POST /api/archive/{instance}:streamParameterValues
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "StreamParameterValues Handler" as Handler
+participant "Instance Registry" as Registry
+participant "MDB Model" as MDB
+database "Parameter Archive Store" as Store
+
+Client -> HTTP : POST /api/archive/{instance}:streamParameterValues\n{ ids[], start, stop }
+activate HTTP
+HTTP -> Handler : StreamParameterValuesQuery(instance, ids, start, stop)
+activate Handler
+Handler -> Registry : resolve(instance)
+activate Registry
+Registry --> Handler : instance context
+deactivate Registry
+Handler -> MDB : resolve ids to parameter definitions (pids)
+activate MDB
+MDB --> Handler : pid set
+deactivate MDB
+Handler -> Store : openCursor(pids, start, stop)
+activate Store
+Store --> Handler : cursor positioned at start
+
+HTTP --> Client : 200 OK, Transfer-Encoding: chunked\n(stream opened)
+
+loop until cursor reaches stop time
+  Handler -> Store : nextBatch()
+  Store --> Handler : batch of parameter values\n(genTime ascending, within [start, stop))
+  Handler --> HTTP : emit batch
+  HTTP --> Client : chunk { parameter data }
+end
+
+Handler -> Store : close cursor
+deactivate Store
+Handler --> HTTP : end of stream
+deactivate Handler
+HTTP --> Client : final chunk, close response
+deactivate HTTP
+
+note right of HTTP
+  AC (L2-ARC-002): GIVEN a replay request with
+  start/stop times WHEN stream endpoint is invoked
+  THEN parameter data is emitted as a chunked
+  server stream.
+end note
+@enduml

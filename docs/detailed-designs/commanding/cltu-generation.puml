@@ -1,0 +1,38 @@
+@startuml cltu-generation
+' Requirements: L1-CMD-001, L2-CMD-004
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title CLTU generation from a validated TC frame (mission coding profile per CCSDS 231.0-B)
+autonumber
+
+participant "COP-1 FOP Engine" as FOP
+participant "TC Frame Builder" as TFB
+participant "CLTU Encoder" as CLTU
+participant "TC Data Link" as LINK
+participant "Ground Station" as GS
+
+FOP -> TFB ++ : BuildFrame(segment, V(S), vcId)
+TFB -> TFB : Set primary header,\ncompute Frame Error Control Field
+TFB --> FOP -- : validated TC transfer frame
+
+FOP -> CLTU ++ : Encode(TC frame)
+
+alt frame exceeds maximum frame length of profile
+    CLTU --> FOP : EncodingError (frame too long)
+    FOP -> FOP : Abort transfer of this frame,\nnegative confirm to dispatcher
+else frame within profile limits
+    CLTU -> CLTU : Apply randomization\n(if selected by mission profile)
+    CLTU -> CLTU : Split frame into codeblocks,\napply BCH(63,56) encoding per codeblock
+    CLTU -> CLTU : Prepend Start Sequence (EB90),\npad final codeblock, append Tail Sequence
+    CLTU --> FOP -- : CLTU octet stream
+    FOP -> LINK ++ : Radiate(CLTU)
+    LINK -> GS : uplink CLTU (PLOP-2 idle/carrier\nhandling per station config)
+    LINK --> FOP -- : radiated
+end
+
+note over CLTU
+    AC L2-CMD-004: GIVEN a validated TC frame WHEN CLTU
+    generation executes THEN output conforms to the selected
+    CLTU profile (start sequence, BCH codeblocks, randomization
+    option, tail sequence per CCSDS 231.0-B, TBD-007 mapping).
+end note
+@enduml

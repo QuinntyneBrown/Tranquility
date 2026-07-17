@@ -1,0 +1,61 @@
+@startuml command-history-lifecycle
+' Requirements: L1-CMD-002, L2-CMD-005
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Command history lifecycle persistence and query
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "IssueCommandHandler" as ICH
+queue "Command Queue" as CQ
+participant "Command Dispatcher" as DISP
+participant "Command Verifier" as VER
+database "Command History Store" as HIST
+participant "CommandHistoryQueryHandler" as CHQ
+
+== Stage: issued and queued ==
+
+OP -> API ++ : POST .../commands/{name}
+API -> ICH ++ : IssueCommandRequest
+ICH -> HIST ++ : Append(id, stage="ISSUED", time, user)
+HIST --> ICH --
+ICH -> CQ ++ : Enqueue(id)
+CQ -> HIST ++ : Append(id, stage="QUEUED", queue, time)
+HIST --> CQ --
+CQ --> ICH --
+ICH --> API -- : { id }
+API --> OP -- : 200 OK
+
+== Stage: released and sent ==
+
+OP -> API ++ : POST .../entries/{entry}:accept
+API -> CQ ++ : Accept(entry)
+CQ -> HIST ++ : Append(id, stage="RELEASED", time, user)
+HIST --> CQ --
+CQ -> DISP ++ : Dispatch(binary)
+DISP -> HIST ++ : Append(id, stage="SENT", time)
+HIST --> DISP --
+DISP --> CQ --
+CQ --> API --
+API --> OP -- : 200 OK
+
+== Stage: verification updates ==
+
+VER -> HIST ++ : Append(id, stage="ACKNOWLEDGED", status=OK, time)
+HIST --> VER --
+
+== Query ordered history ==
+
+OP -> API ++ : GET /api/archive/{instance}/commands/{id}
+API -> CHQ ++ : CommandHistoryQuery(id)
+CHQ -> HIST ++ : ReadEntries(id)
+HIST --> CHQ -- : [ISSUED, QUEUED, RELEASED,\nSENT, ACKNOWLEDGED] with timestamps
+CHQ --> API -- : ordered lifecycle records
+API --> OP -- : 200 OK { entry: attrs per stage }
+
+note right of OP
+    AC L2-CMD-005: GIVEN a command that is queued and released
+    WHEN history is queried THEN lifecycle records show ordered
+    stage progression.
+end note
+@enduml

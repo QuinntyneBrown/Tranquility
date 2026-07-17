@@ -1,0 +1,49 @@
+@startuml mdb-metadata-query
+' Requirements: L2-MDB-002, L1-MDB-001
+' Source: docs/specs/mission-database/L1.md, docs/specs/mission-database/L2.md
+title MDB API: Model Metadata and Hierarchy Query
+autonumber
+
+actor "Operator Client" as OP
+participant "HTTP API" as API
+participant "GetMdbOverviewHandler" as QH
+participant "Instance Registry" as REG
+participant "MDB Model" as MODEL
+
+== Model overview (counts) ==
+OP -> API ++ : GET /api/mdb/{instance}
+API -> QH ++ : GetMdbOverviewQuery(instance)
+QH -> REG ++ : GetActiveModel(instance)
+
+alt Active mission database present
+    REG --> QH -- : MdbModel reference
+    QH -> MODEL ++ : GetCounts()
+    MODEL --> QH -- : {parameterCount, commandCount,\ncontainerCount, algorithmCount}
+    QH --> API -- : MdbOverview(version, counts)
+    API --> OP -- : 200 OK {version, counts}
+    note over OP, API
+      L2-MDB-002: GIVEN an active mission database
+      WHEN MDB API methods are called THEN model
+      counts and hierarchy data are returned
+    end note
+else No active mission database for instance
+    REG --> QH : null
+    QH --> API : NotFound
+    API --> OP : 404 Not Found\n{error: "no active mission\ndatabase for instance"}
+end
+
+== Space-system hierarchy ==
+OP -> API ++ : GET /api/mdb/{instance}/space-systems
+API -> QH ++ : GetSpaceSystemTreeQuery(instance)
+QH -> REG ++ : GetActiveModel(instance)
+REG --> QH -- : MdbModel reference
+QH -> MODEL ++ : GetSpaceSystemRoot()
+
+loop for each SpaceSystem node (depth-first)
+    MODEL -> MODEL : Collect qualified name,\nchild systems, member counts
+end
+
+MODEL --> QH -- : SpaceSystem hierarchy
+QH --> API -- : SpaceSystemTree(rootNode)
+API --> OP -- : 200 OK {spaceSystems:\nnested hierarchy}
+@enduml

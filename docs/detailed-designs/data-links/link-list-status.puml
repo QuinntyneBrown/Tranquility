@@ -1,0 +1,42 @@
+@startuml link-list-status
+' Requirements: L1-LNK-001, L2-LNK-001, L2-LNK-004
+' Source: docs/specs/data-links/L1.md, docs/specs/data-links/L2.md
+title List links with metadata and counters (GET /api/links/{instance})
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "ListLinksQueryHandler" as QH
+participant "Instance Registry" as REG
+participant "Link Manager" as LM
+participant "UDP TM Link" as LINK
+
+OP -> API ++ : GET /api/links/{instance}
+API -> QH ++ : ListLinksQuery(instance)
+QH -> REG ++ : ResolveInstance(instance)
+
+alt instance known
+    REG --> QH -- : InstanceContext
+    QH -> LM ++ : GetLinkDescriptors(instance)
+    loop for each configured link
+        LM -> LINK ++ : GetStatus()
+        LINK --> LM -- : name, type, disabled, status,\ndataInCount, dataOutCount, detail
+    end
+    LM --> QH -- : LinkInfo[]
+    QH --> API -- : LinkInfo[]
+    API --> OP : 200 OK { links: [ name, disabled,\ncounters, detail, ... ] }
+    note right of API
+      AC L2-LNK-001: GIVEN an instance with configured
+      links WHEN list-links endpoint is queried THEN each
+      link includes name, disabled status, counters,
+      and detail fields.
+    end note
+else instance unknown
+    REG --> QH : NotFound
+    deactivate REG
+    QH --> API : InstanceNotFoundError
+    deactivate QH
+    API --> OP : 404 Not Found { message: "unknown instance" }
+    deactivate API
+end
+@enduml

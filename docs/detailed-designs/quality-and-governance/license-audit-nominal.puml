@@ -1,0 +1,44 @@
+@startuml license-audit-nominal
+' Requirements: L1-QLT-001, L2-QLT-003
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title CI dependency license audit - nominal pass
+autonumber
+
+actor "Developer" as DEV
+actor "CI Pipeline" as CI
+participant "License Audit Step" as LAS
+participant "Dependency Graph Resolver" as DGR
+participant "License Policy Engine" as LPE
+database "License Policy\n(allowlist / denylist)" as POL
+database "Audit Report Store\n(build artifacts)" as ARS
+
+DEV -> CI ++ : Push commit / open PR
+CI -> LAS ++ : Run license-audit stage
+
+LAS -> DGR ++ : ResolveDependencyGraph(solution lockfiles)
+DGR -> DGR : Walk direct + transitive packages,\ncollect declared license per package
+DGR --> LAS -- : dependency graph with license metadata
+
+LAS -> LPE ++ : Evaluate(graph)
+LPE -> POL ++ : Load Apache-2.0 compatibility policy
+POL --> LPE -- : allowed / disallowed license sets
+
+loop for each package in dependency graph
+  LPE -> LPE : Classify license against policy
+end
+
+LPE --> LAS -- : Verdict: all licenses allowed
+
+LAS -> ARS ++ : Persist signed audit report\n(package, version, license, verdict)
+ARS --> LAS -- : report reference
+
+LAS --> CI -- : Stage passed
+CI --> DEV -- : Pipeline status: success\n(license governance satisfied, L1-QLT-001)
+
+note right of CI
+  Nominal complement of L2-QLT-003:
+  no disallowed license present, so the
+  pipeline proceeds and evidence is archived.
+end note
+
+@enduml

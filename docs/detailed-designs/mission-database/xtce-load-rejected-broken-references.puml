@@ -1,0 +1,44 @@
+@startuml xtce-load-rejected-broken-references
+' Requirements: L2-MDB-001, L1-MDB-001
+' Source: docs/specs/mission-database/L1.md, docs/specs/mission-database/L2.md
+title XTCE Load Rejected: Broken References (Validation Failure)
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "LoadMissionDatabaseHandler" as CMD
+participant "XTCE Loader" as LOADER
+database "XTCE File Store" as FS
+participant "XTCE Validator" as VAL
+participant "Instance Registry" as REG
+participant "Audit Log" as AUDIT
+
+OP -> API ++ : POST /api/mdb/{instance}/load\n{xtceRef}
+API -> CMD ++ : LoadMissionDatabaseCommand(instance, xtceRef)
+CMD -> LOADER ++ : Load(xtceRef)
+LOADER -> FS ++ : Read XTCE document
+FS --> LOADER -- : XML content
+LOADER -> LOADER : Parse SpaceSystem tree
+LOADER -> VAL ++ : Validate(spaceSystemTree)
+VAL -> VAL : Check structural integrity
+VAL -> VAL : Resolve references
+
+alt All references resolve
+    VAL --> LOADER : ValidationReport(valid)
+    note right of VAL : Continues per nominal\nload-and-activate flow
+else Broken references detected
+    VAL -> VAL : Collect every unresolved reference\n(refName, referring element,\ndocument location)
+    VAL --> LOADER -- : ValidationReport(invalid,\nerrors[])
+    LOADER --> CMD -- : LoadFailed(ValidationReport)
+    note over CMD, REG
+      GIVEN an XTCE document with broken references
+      WHEN load is requested
+      THEN activation is rejected with a validation report
+      (L2-MDB-001). Instance Registry is never invoked;
+      any previously active mission database stays active.
+    end note
+    CMD -> AUDIT : Record(mdb-load-rejected,\ninstance, xtceRef, errorCount)
+    CMD --> API -- : ValidationFailure(report)
+    API --> OP -- : 422 Unprocessable Entity\n{validationReport: [{ref,\nelement, location}, ...]}
+end
+@enduml

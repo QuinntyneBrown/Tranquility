@@ -1,0 +1,28 @@
+@startuml unmapped-packet-handling
+' Requirements: L1-SPP-001, L2-SPP-002
+' Source: docs/specs/space-packet-processing-and-decommutation/L1.md, docs/specs/space-packet-processing-and-decommutation/L2.md
+title Unmapped Packet Handling (no matching MDB container - alternate flow)
+autonumber
+
+participant "Packet Router" as PR
+participant "Decommutation Engine" as DE
+participant "XTCE Container Resolver" as CR
+participant "Mission Database (MDB)" as MDB
+database "Event Log" as EV
+database "Raw Packet Archive" as ARC
+
+PR -> DE ++ : decommutate(packet, primaryHeader)
+DE -> CR ++ : resolve root container for APID
+CR -> MDB ++ : lookup SequenceContainer whose\nRestrictionCriteria match APID
+MDB --> CR -- : no matching container in active MDB
+CR --> DE -- : ContainerNotFound(apid)
+note over DE
+  Alternate to the L2-SPP-002 nominal flow:
+  the packet is NOT mapped in the active MDB,
+  so no container or parameter set is produced.
+  The packet is retained, not silently dropped.
+end note
+DE -> EV : emit warning event\nUNMAPPED_APID { apid, seqCount,\nreceiveTime, mdbVersion }
+DE -> ARC : retain raw packet bytes\n(flag = unprocessed)
+DE --> PR -- : delivery result = unprocessed\n(no parameters published)
+@enduml

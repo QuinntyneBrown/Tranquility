@@ -1,0 +1,45 @@
+@startuml processor-delete
+' Requirements: L1-LIF-001, L2-LIF-002
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Processor lifecycle - delete processor (with protected-processor denial)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "DeleteProcessorCommandHandler" as CH
+participant "Processor Registry" as PREG
+participant "Replay Processor" as PROC
+participant "Subscription Manager" as SUB
+database "Audit Log" as AUD
+
+OP -> API ++ : DELETE /api/processors/{instance}/{processor}
+API -> CH ++ : DeleteProcessorCommand(instance, processor)
+CH -> PREG ++ : TryGetProcessor(instance, processor)
+
+alt processor unknown
+  PREG --> CH : not found
+  CH --> API : ProcessorNotFoundError
+  API --> OP : 404 Not Found { msg: "no such processor" }
+else processor is protected (e.g. built-in realtime)
+  PREG --> CH : handle (protected=true)
+  CH --> API : ForbiddenOperationError
+  API --> OP : 403 Forbidden { msg: "processor is protected\nand cannot be deleted" }
+else deletable processor (nominal)
+  PREG --> CH -- : handle (protected=false)
+  CH -> PROC ++ : Stop()
+  PROC -> PROC : halt replay, close archive cursor,\nstate := CLOSED
+  PROC --> CH -- : stopped
+  CH -> SUB ++ : DetachSubscribers(processor)
+  SUB --> CH -- : subscribers notified\n(processor closed event)
+  CH -> PREG : Unregister(instance, processor)
+  CH -> AUD : append(processor deleted, actor, timestamp)
+  CH --> API -- : deleted
+  API --> OP -- : 200 OK
+  note right of OP
+    AC (L2-LIF-002): GIVEN processor lifecycle requests
+    WHEN delete method executes THEN processor state
+    reflects requested operation (processor removed,
+    no longer returned by list method).
+  end note
+end
+@enduml

@@ -1,0 +1,33 @@
+@startuml processor-list
+' Requirements: L1-LIF-001, L2-LIF-002
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Processor lifecycle - list processors of an instance
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "ListProcessorsQueryHandler" as QH
+participant "Instance Registry" as REG
+participant "Processor Registry" as PREG
+
+OP -> API ++ : GET /api/instances/{instance}/processors
+API -> QH ++ : ListProcessorsQuery(instanceName)
+QH -> REG ++ : TryGetInstance(instanceName)
+
+alt instance unknown
+  REG --> QH : not found
+  QH --> API : InstanceNotFoundError
+  API --> OP : 404 Not Found { msg: "no such instance" }
+else instance configured (nominal)
+  REG --> QH -- : InstanceDescriptor
+  QH -> PREG ++ : GetProcessors(instanceName)
+  PREG --> QH -- : ProcessorHandle[] (realtime + replay)
+  QH -> QH : map to documented ProcessorInfo\nstructure (name, type, state,\npersistent, replayState fields)
+  QH --> API -- : ProcessorInfo[]
+  API --> OP -- : 200 OK { "processors": [ {name, type, state, ...} ] }
+  note right of OP
+    AC (L2-LIF-002): list method returns processors
+    whose state reflects prior lifecycle operations.
+  end note
+end
+@enduml

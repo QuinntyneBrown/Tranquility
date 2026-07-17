@@ -1,0 +1,70 @@
+@startuml command-end-to-end-dispatch
+' Requirements: L1-CMD-001, L2-CMD-001, L2-CMD-002, L2-CMD-003, L2-CMD-004, L2-CMD-005
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title End-to-end command path: issue, queue, dispatch, verification (L1 demonstration flow)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "IssueCommandHandler" as ICH
+queue "Command Queue" as CQ
+participant "Command Dispatcher" as DISP
+participant "COP-1 FOP Engine" as FOP
+participant "CLTU Encoder" as CLTU
+participant "TC Data Link" as LINK
+participant "Ground Station" as GS
+participant "Spacecraft" as SC
+participant "Command Verifier" as VER
+database "Command History Store" as HIST
+
+== Stage 1: Issue ==
+
+OP -> API ++ : POST .../commands/{name} { assignments }
+API -> ICH ++ : validate, encode binary
+ICH -> HIST : Append(stage="ISSUED")
+ICH -> CQ ++ : Enqueue(id, binary)
+CQ -> HIST : Append(stage="QUEUED")
+CQ --> ICH --
+ICH --> API -- : { id, binary }
+API --> OP -- : 200 OK
+
+== Stage 2: Release from queue ==
+
+OP -> API ++ : POST .../entries/{entry}:accept
+API -> CQ ++ : Accept(entry)
+CQ -> HIST : Append(stage="RELEASED")
+CQ -> DISP ++ : Dispatch(binary)
+CQ --> API --
+API --> OP -- : 200 OK (queue updated)
+
+== Stage 3: COP-1 transfer and CLTU uplink ==
+
+DISP -> FOP ++ : Transmit(TC frame)
+FOP -> FOP : AD mode, assign V(S)
+FOP -> CLTU ++ : Encode(frame)
+CLTU --> FOP -- : CLTU
+FOP -> LINK ++ : Radiate(CLTU)
+LINK -> GS : uplink
+GS -> SC : RF uplink
+LINK --> FOP --
+FOP -> HIST : Append(stage="SENT")
+SC --> GS : CLCW (N(R) advanced)
+GS --> LINK : CLCW report
+LINK --> FOP : CLCW
+FOP -> FOP : acknowledge frame
+FOP --> DISP -- : positive confirm
+deactivate DISP
+
+== Stage 4: Verification ==
+
+SC --> GS : TM ack report
+GS --> VER ++ : via TM link and telemetry processor
+VER -> HIST : Append(stage="EXECUTION_COMPLETE", status=OK)
+VER --> OP -- : WebSocket command-history update
+
+note over OP, HIST
+    L1-CMD-001: complete end-to-end command-path support
+    (issue, queueing, dispatch, verification) demonstrated
+    across the API, application, COP-1/CLTU core, and links.
+end note
+@enduml

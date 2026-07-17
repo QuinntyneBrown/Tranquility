@@ -1,0 +1,69 @@
+@startuml sequence-drop-detection
+' Requirements: L2-RTS-004, L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Frame-Drop Detectability Through Sequence Progression
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Outbound Message Buffer" as Buf
+participant "Session Manager" as SM
+participant "Subscription Manager" as SubMgr
+participant "Telemetry Processor" as Proc
+
+note over Client, SubMgr
+  Acceptance (L2-RTS-004): GIVEN an induced drop condition
+  WHEN subscription traffic is analyzed THEN sequence
+  discontinuity is observable by the client.
+end note
+
+== Nominal progression ==
+
+loop steady-state updates
+  Proc -> SubMgr ++ : PublishParameterDelivery(batch)
+  SubMgr -> WS ++ : Emit(call = c, batch)
+  deactivate SubMgr
+  WS -> SM : seq = ++session.seqCounter
+  note right of WS
+    seq is assigned at message creation,
+    BEFORE enqueueing to the socket buffer,
+    so a later drop leaves a gap.
+  end note
+  WS -> Buf ++ : Enqueue(message seq = s)
+  Buf --> Client -- : { type: "parameters", call: c, seq: s, data }
+  deactivate WS
+end
+
+== Induced drop condition (slow client under load) ==
+
+Proc -> SubMgr ++ : PublishParameterDelivery(burst)
+SubMgr -> WS ++ : Emit(call = c, burst)
+deactivate SubMgr
+WS -> SM : seq = s+1
+WS -> Buf ++ : Enqueue(message seq = s+1)
+
+alt outbound buffer full (client not draining)
+  Buf --> WS : rejected (overflow)
+  WS -> WS : drop message seq = s+1,\nincrement session dropCount
+  note right of WS
+    The message is discarded but its seq
+    number is consumed; progression is
+    intentionally not repaired.
+  end note
+else buffer has capacity
+  Buf --> Client : { ... seq: s+1 ... }
+end
+deactivate Buf
+deactivate WS
+
+== Client-side detection ==
+
+Proc -> SubMgr ++ : PublishParameterDelivery(next batch)
+SubMgr -> WS ++ : Emit(call = c, next batch)
+deactivate SubMgr
+WS -> SM : seq = s+2
+WS -> Buf ++ : Enqueue(message seq = s+2)
+Buf --> Client -- : { type: "parameters", call: c, seq: s+2, data }
+deactivate WS
+Client -> Client : analyze stream:\nlast seen seq = s, received seq = s+2\n=> discontinuity, 1 message dropped
+@enduml

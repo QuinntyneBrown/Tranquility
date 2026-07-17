@@ -1,0 +1,44 @@
+@startuml parameter-archive-segments
+' Requirements: L1-ARC-001, L2-ARC-003
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Archived segment listing - GET /api/parameter-archive/{instance}/pids/{pid}/segments
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "ListSegments Handler" as Handler
+participant "Instance Registry" as Registry
+database "Parameter Archive Store" as Store
+
+Client -> HTTP : GET /api/parameter-archive/{instance}/pids/{pid}/segments
+activate HTTP
+HTTP -> Handler : ListSegmentsQuery(instance, pid)
+activate Handler
+Handler -> Registry : resolve(instance)
+activate Registry
+Registry --> Handler : instance context
+deactivate Registry
+
+alt pid known to parameter archive
+  Handler -> Store : enumerateSegments(pid)
+  activate Store
+  Store --> Handler : segment metadata\n[{ segmentStart, segmentEnd, count }, ...]
+  deactivate Store
+  Handler --> HTTP : segment metadata list
+  HTTP --> Client : 200 OK { segments: [ { start, end, count } ] }
+else unknown pid
+  Handler -> Store : enumerateSegments(pid)
+  activate Store
+  Store --> Handler : no segments / pid not registered
+  deactivate Store
+  Handler --> HTTP : PidNotFound
+  HTTP --> Client : 404 Not Found { unknown pid }
+end
+deactivate Handler
+deactivate HTTP
+
+note right of Store
+  AC (L2-ARC-003): GIVEN a valid parameter ID
+  WHEN segment endpoint is queried THEN segment
+  metadata is returned with start, end, and count fields.
+end note
+@enduml

@@ -8,7 +8,7 @@ Tranquility is a **clean-room implementation** derived exclusively from publishe
 
 Skeleton + vertical slice: UDP packet ingest → CCSDS space packet decommutation → XTCE-driven parameter processing and alarms → HTTP + WebSocket API.
 
-See `docs/IMPLEMENTATION-PLAN.md` for scope and `docs/specs/TRQ-VCRM.md` for requirement traceability.
+See `docs/specs/README.md` for the subsystem requirement index.
 
 ## Layout
 
@@ -22,7 +22,7 @@ See `docs/IMPLEMENTATION-PLAN.md` for scope and `docs/specs/TRQ-VCRM.md` for req
 | `tools/Tranquility.PacketGen` | Demo CCSDS packet sender. |
 | `tools/Tranquility.DiffHarness` | Differential conformance harness skeleton. |
 | `tests/` | Unit + integration tests. |
-| `docs/specs/` | Requirements baseline (L1/L2 per subsystem, ICD, VCRM, ADRs). |
+| `docs/specs/` | Requirements categorized by subsystem and split into L1/L2 artifacts. |
 
 ## Build and test
 
@@ -84,8 +84,7 @@ Where each implemented requirement lives:
 | L2-QLT-001/003 (Linux CI, license audit) | `.github/workflows/ci.yml` | CI run |
 | L2-CMD, L2-FDP, L2-ARC, L2-DIF (stubs) | `Commanding/Cfdp/Archive` `Contracts.cs`, `tools/Tranquility.DiffHarness` | later phase |
 
-Full requirement text: `docs/specs/<subsystem>/L1.md` and `L2.md`; verification
-matrix: `docs/specs/TRQ-VCRM.md`.
+Full requirement text: `docs/specs/<subsystem>/L1.md` and `L2.md`.
 
 ## License
 

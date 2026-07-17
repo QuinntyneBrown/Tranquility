@@ -1,0 +1,47 @@
+@startuml timecode-profile-roundtrip
+' Requirements: L1-TIM-001, L2-TIM-004
+' Source: docs/specs/time-correlation/L1.md, docs/specs/time-correlation/L2.md
+title CCSDS Time-Code Profile - Decode/Encode Round-Trip Conformance
+autonumber
+actor "CI Pipeline" as CI
+participant "Conformance Test Harness" as TH
+participant "Mission Configuration" as CFG
+participant "Time Codec (Declared CCSDS Profile)" as CODEC
+
+CI -> TH ++ : run time-code profile conformance suite
+TH -> CFG ++ : LoadDeclaredProfile()
+CFG --> TH -- : profile {timeCodeType, epoch, coarseOctets, fineOctets}
+note right of TH
+    L2-TIM-004: exactly one declared CCSDS 301.0-B
+    time-code profile governs mission time
+    decode/encode behavior (clause mapping TBD-009).
+end note
+loop for each mission time test vector
+    TH -> CODEC ++ : Decode(encoded octets)
+    CODEC --> TH -- : mission time or TimeCodeFormatError
+    alt octets conform to declared profile
+        TH -> CODEC ++ : Encode(mission time)
+        CODEC -> CODEC : emit coarse and fine fields per profile rules
+        CODEC --> TH -- : re-encoded octets
+        TH -> TH : compare re-encoded octets with original
+        alt round-trip octets identical
+            TH -> TH : record PASS
+        else round-trip mismatch
+            TH -> TH : record FAIL (profile rule violated)
+        end
+    else octets do not conform to declared profile
+        TH -> TH : record rejected input (TimeCodeFormatError)
+        note right of TH
+            Only the single declared profile is accepted;
+            deterministic time handling requires rejecting
+            non-conforming time codes.
+        end note
+    end
+end
+TH --> CI -- : conformance report (pass/fail per vector)
+note over CI
+    AC L2-TIM-004: GIVEN mission time values encoded per
+    declared profile WHEN decoded and re-encoded
+    THEN round-trip behavior matches profile rules.
+end note
+@enduml

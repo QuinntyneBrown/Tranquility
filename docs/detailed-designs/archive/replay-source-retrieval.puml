@@ -1,0 +1,56 @@
+@startuml replay-source-retrieval
+' Requirements: L1-ARC-001, L2-ARC-004
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Replay-source retrieval - history request with source=replay
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "GetParameterHistory Handler" as Handler
+participant "Processor Registry" as ProcReg
+participant "Replay Processor" as Replay
+participant "Decommutation Engine" as Decom
+participant "MDB Model" as MDB
+database "Packet Archive Store" as PktStore
+
+Client -> HTTP : GET /api/archive/{instance}/parameters/{name}\n?source=replay&start=T0&stop=T1
+activate HTTP
+HTTP -> Handler : GetParameterHistoryQuery(instance, name,\nsource=replay, start, stop)
+activate Handler
+Handler -> ProcReg : createReplayProcessor(instance, T0, T1,\nparameter filter)
+activate ProcReg
+ProcReg -> Replay : start(T0, T1, filter)
+activate Replay
+ProcReg --> Handler : replay processor handle
+deactivate ProcReg
+
+== Replay-mode processing ==
+loop packet batches over [T0, T1)
+  Replay -> PktStore : readPackets(nextRange)
+  activate PktStore
+  PktStore --> Replay : archived packets
+  deactivate PktStore
+  Replay -> Decom : decommutate(packets)
+  activate Decom
+  Decom -> MDB : active parameter definitions\n(current MDB version)
+  activate MDB
+  MDB --> Decom : calibrations, containers, alarms
+  deactivate MDB
+  Decom --> Replay : parameter values\n(active MDB semantics)
+  deactivate Decom
+  Replay --> Handler : emit values for {name}
+end
+Replay -> ProcReg : replay complete, unregister processor
+deactivate Replay
+
+Handler --> HTTP : values bounded by [T0, T1)
+deactivate Handler
+HTTP --> Client : 200 OK { values[], source: replay }
+deactivate HTTP
+
+note right of Decom
+  AC (L2-ARC-004): GIVEN a history request with replay
+  source option WHEN processed THEN data is returned
+  through replay-mode processing with active MDB
+  semantics (re-decommutated from archived packets).
+end note
+@enduml

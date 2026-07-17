@@ -1,0 +1,45 @@
+@startuml cqrs-conformance-analysis
+' Requirements: L1-QLT-001, L2-QLT-006
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title CQRS architecture conformance analysis (command/query interface separation)
+autonumber
+
+actor "Architecture Reviewer" as REV
+actor "CI Pipeline" as CI
+participant "Architecture Conformance\nAnalyzer" as ACA
+participant "Application Assembly\nScanner" as SCAN
+database "Conformance Rules\n(architecture fitness tests)" as RULES
+
+REV -> CI ++ : Trigger architecture conformance stage
+CI -> ACA ++ : Analyze(Tranquility.Application assembly)
+
+ACA -> RULES ++ : Load CQRS separation rules
+RULES --> ACA -- : rule set\n(mutation vs retrieval contracts)
+
+ACA -> SCAN ++ : Enumerate service interfaces and handlers
+SCAN -> SCAN : Reflect over ICommandHandler<TCommand>\nand IQueryHandler<TQuery, TResult> implementations
+SCAN --> ACA -- : interface inventory
+
+note right of ACA
+  L2-QLT-006 acceptance:
+  GIVEN architecture conformance review WHEN
+  service interfaces are inspected THEN mutation
+  paths and retrieval paths are separated by
+  interface contract.
+end note
+
+loop for each application service interface
+  ACA -> ACA : Classify as command-side (mutation)\nor query-side (retrieval)
+  ACA -> ACA : Verify query handlers reference only\nread models / no state mutation ports
+  ACA -> ACA : Verify command handlers do not expose\nretrieval return contracts beyond acknowledgment
+end
+
+alt Mutation and retrieval paths separated by contract
+  ACA --> CI : Conformant (analysis evidence attached)
+  CI --> REV : Stage passed; CQRS constraint of\nL1-QLT-001 satisfied
+else Interface mixes mutation and retrieval concerns
+  ACA --> CI -- : Violation report\n(type name, mixed responsibilities)
+  CI --> REV -- : Stage failed; refactor handler into\nseparate command and query contracts
+end
+
+@enduml

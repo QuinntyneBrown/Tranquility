@@ -1,0 +1,55 @@
+@startuml tco-set-config
+' Requirements: L1-TIM-001, L2-TIM-002
+' Source: docs/specs/time-correlation/L1.md, docs/specs/time-correlation/L2.md
+title TCO Configuration Update - POST /api/tco/{instance}/{serviceName}/config
+autonumber
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Filter" as AUTHZ
+participant "SetTcoConfig Command Handler" as CH
+participant "Instance Registry" as REG
+participant "Time Correlation Service" as TCO
+participant "Audit Log" as AUD
+
+OP -> API ++ : POST /api/tco/{instance}/{serviceName}/config\n{accuracy, validity, onboardDelay, defaultTof}
+API -> AUTHZ ++ : Authorize(caller, ControlTimeCorrelation)
+AUTHZ --> API -- : decision
+alt caller lacks ControlTimeCorrelation privilege
+    API --> OP : 403 Forbidden {message}
+    note right of OP
+        Rationale L2-TIM-002: missions require
+        controlled updates to time-correlation
+        model parameters.
+    end note
+else caller authorized
+    API -> CH ++ : SetTcoConfigCommand(instance, serviceName, config)
+    CH -> REG ++ : ResolveTcoService(instance, serviceName)
+    REG --> CH -- : service handle
+    CH -> TCO ++ : ValidateConfig(config)
+    TCO --> CH -- : validation result
+    alt configuration invalid (negative accuracy, validity < accuracy, malformed defaultTof)
+        CH --> API : ValidationError(field, reason)
+        API --> OP : 400 Bad Request {field, reason}
+    else valid configuration change
+        CH -> TCO ++ : ApplyConfig(config)
+        TCO -> TCO : update accuracy and validity thresholds
+        TCO -> TCO : update onboardDelay and defaultTof
+        TCO --> CH -- : applied
+        CH -> AUD ++ : Record(tco-config-change, caller, before/after values)
+        AUD --> CH -- : recorded
+        CH --> API : Ok
+        API --> OP : 200 OK
+    end
+    deactivate CH
+end
+deactivate API
+
+== Subsequent status reflects updated values (valid-change path) ==
+OP -> API ++ : GET /api/tco/{instance}/{serviceName}/status
+API --> OP -- : 200 OK {status fields reflect updated config values}
+note right of OP
+    AC L2-TIM-002: GIVEN a valid configuration change
+    WHEN set-config is invoked
+    THEN subsequent status reflects updated values.
+end note
+@enduml

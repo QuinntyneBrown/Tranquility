@@ -1,0 +1,53 @@
+@startuml audit-query
+' Requirements: L1-SEC-001, L1-SEC-002, L2-SEC-004
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title Audit Trail Query - Immutable Record Retrieval
+autonumber
+
+actor "Security Auditor" as SA
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "Authorization Service" as AZ
+participant "Audit Query Handler" as AQH
+database "Audit Log" as ADB
+
+SA -> API : GET /api/audit/records?start={t0}&stop={t1}&service={svc}
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (authenticated user)
+deactivate MW
+API -> AZ : CheckPrivilege(principal, ReadAudit)
+activate AZ
+
+alt privilege granted
+  AZ --> API : authorized
+  API -> AQH : QueryAuditRecords(start, stop, service filter)
+  activate AQH
+  AQH -> ADB : read entries in time range\n(append-only store; no update or delete path exists)
+  activate ADB
+  ADB --> AQH : matching entries
+  deactivate ADB
+  AQH --> API : records [ { actor, action, timestamp, outcome } ]
+  deactivate AQH
+  API --> SA : 200 OK { records }
+  note right of SA
+    L2-SEC-004: GIVEN successful or denied privileged operations
+    WHEN audit is queried THEN corresponding records include
+    actor, action, timestamp, and outcome.
+  end note
+else privilege missing
+  AZ --> API : denied (missing ReadAudit)
+  API -> AQH : RecordDenial(event=authz-denial, actor=principal,\naction=audit-query, timestamp, outcome=denied)
+  activate AQH
+  AQH -> ADB : append immutable entry
+  activate ADB
+  ADB --> AQH : appended
+  deactivate ADB
+  AQH --> API : recorded
+  deactivate AQH
+  API --> SA : 403 Forbidden { authorization error }
+end
+deactivate AZ
+deactivate API
+@enduml

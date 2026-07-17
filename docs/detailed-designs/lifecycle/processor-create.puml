@@ -1,0 +1,54 @@
+@startuml processor-create
+' Requirements: L1-LIF-001, L2-LIF-002
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Processor lifecycle - create processor (with rejection paths)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "CreateProcessorCommandHandler" as CH
+participant "Instance Registry" as REG
+participant "Processor Registry" as PREG
+participant "Processor Factory" as PF
+participant "Replay Processor" as PROC
+database "Archive Store" as ARC
+database "Audit Log" as AUD
+
+OP -> API ++ : POST /api/processors\n{ instance, name, type: "Archive",\n  persistent, config: {start, stop, speed} }
+API -> CH ++ : CreateProcessorCommand(request)
+CH -> REG ++ : TryGetInstance(request.instance)
+
+alt instance unknown
+  REG --> CH : not found
+  CH --> API : InstanceNotFoundError
+  API --> OP : 404 Not Found { msg: "no such instance" }
+else processor name already exists
+  REG --> CH : InstanceDescriptor
+  CH -> PREG ++ : Exists(instance, request.name)
+  PREG --> CH -- : true
+  CH --> API : DuplicateProcessorError
+  API --> OP : 409 Conflict { msg: "processor already exists" }
+else processor type not registered
+  CH -> PF ++ : ValidateType(request.type)
+  PF --> CH -- : unknown type
+  CH --> API : BadRequestError
+  API --> OP : 400 Bad Request { msg: "unknown processor type" }
+else request valid (nominal)
+  REG --> CH -- : InstanceDescriptor
+  CH -> PF ++ : Create(instance, name, type,\npersistent, replayConfig)
+  PF -> PROC ++ : construct(replayConfig)
+  PROC -> ARC ++ : OpenReplayCursor(start, stop)
+  ARC --> PROC -- : cursor ready
+  PROC --> PF -- : processor (state=PAUSED or RUNNING\nper requested initial state)
+  PF --> CH -- : processor handle
+  CH -> PREG : Register(instance, processor)
+  CH -> AUD : append(processor created, actor, timestamp)
+  CH --> API -- : ProcessorInfo(name, type, state,\npersistent, replayRequest)
+  API --> OP -- : 200 OK { name, type, state, persistent, ... }
+  note right of OP
+    AC (L2-LIF-002): GIVEN processor lifecycle requests
+    WHEN create method executes
+    THEN processor state reflects requested operation.
+  end note
+end
+@enduml

@@ -1,0 +1,55 @@
+@startuml processor-edit
+' Requirements: L1-LIF-001, L2-LIF-002
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Processor lifecycle - edit processor (state / seek / speed) with non-replay rejection
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "EditProcessorCommandHandler" as CH
+participant "Processor Registry" as PREG
+participant "Replay Processor" as PROC
+participant "Replay Engine" as RE
+database "Audit Log" as AUD
+
+OP -> API ++ : PATCH /api/processors/{instance}/{processor}\n{ state?: "paused"|"running", seek?, speed? }
+API -> CH ++ : EditProcessorCommand(request)
+CH -> PREG ++ : TryGetProcessor(instance, processor)
+
+alt processor unknown
+  PREG --> CH : not found
+  CH --> API : ProcessorNotFoundError
+  API --> OP : 404 Not Found { msg: "no such processor" }
+else processor is not a replay processor
+  PREG --> CH : handle (type=realtime)
+  CH --> API : BadRequestError
+  API --> OP : 400 Bad Request { msg: "not a replay processor" }
+  note right of OP
+    Edit operations (seek, speed, pause)
+    only apply to replay processors.
+  end note
+else replay processor (nominal)
+  PREG --> CH -- : handle (type=Archive)
+  CH -> PROC ++ : ApplyEdit(state, seek, speed)
+  opt seek requested
+    PROC -> RE ++ : Seek(seekTime)
+    RE --> PROC -- : cursor repositioned
+  end
+  opt speed requested
+    PROC -> RE : SetSpeed(speed)
+  end
+  opt state requested
+    PROC -> RE : Pause() or Resume()
+  end
+  PROC -> PROC : update exposed state fields
+  PROC --> CH -- : updated ProcessorInfo
+  CH -> AUD : append(processor edited, actor, timestamp)
+  CH --> API -- : ProcessorInfo(state, replayState)
+  API --> OP -- : 200 OK { name, state, replayRequest, ... }
+  note right of OP
+    AC (L2-LIF-002): GIVEN processor lifecycle requests
+    WHEN edit method executes THEN processor state
+    reflects requested operation.
+  end note
+end
+@enduml

@@ -1,0 +1,50 @@
+@startuml transfer-status-subscription
+' Requirements: L1-FDP-001, L2-FDP-003
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title Transfer Status Subscription - WebSocket file-transfers Topic
+autonumber
+
+actor "Operator/Client" as OP
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SUB
+participant "Instance Registry" as REG
+participant "CFDP Engine" as ENG
+
+== Subscribe ==
+OP -> WS ++ : subscribe {topic: "file-transfers",\ninstance, serviceName}
+WS -> REG ++ : ResolveFileTransferService(instance, serviceName)
+
+alt instance or serviceName unknown
+    REG --> WS : NotFound
+    WS --> OP : reply {exception: "no such file transfer service"}
+else service resolved
+    REG --> WS -- : service reference
+    WS -> SUB ++ : Register(callId, topic=file-transfers,\nservice)
+    SUB -> ENG : attach TransferEventListener
+    SUB --> WS -- : subscriptionId
+    WS --> OP : reply {subscriptionId}
+    WS -> OP : initial snapshot: TransferInfo\nfor each ongoing transfer
+end
+
+== Push updates on state change ==
+loop while subscription active
+    ENG -> SUB ++ : TransferEvent(transferId,\nstate change, bytesTransferred)
+    SUB -> WS ++ : publish to matching subscriptions
+    WS -> OP : data message {TransferInfo:\nid, state, sizeTransferred, failureReason?}
+    deactivate WS
+    deactivate SUB
+    note right of OP
+        L2-FDP-003 AC: GIVEN an active transfer
+        subscription WHEN transfer state changes
+        THEN a status update is delivered on the
+        subscription stream.
+    end note
+end
+
+== Unsubscribe ==
+OP -> WS : cancel {subscriptionId}
+WS -> SUB ++ : Unregister(subscriptionId)
+SUB -> ENG : detach TransferEventListener\n(when last subscriber leaves)
+SUB --> WS -- : done
+WS --> OP -- : reply {cancelled}
+@enduml

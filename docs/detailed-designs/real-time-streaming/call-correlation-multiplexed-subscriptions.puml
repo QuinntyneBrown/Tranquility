@@ -1,0 +1,62 @@
+@startuml call-correlation-multiplexed-subscriptions
+' Requirements: L2-RTS-001, L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Call/Seq Correlation Across Concurrent Multiplexed Subscriptions
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Session Manager" as SM
+participant "Subscription Manager" as SubMgr
+participant "Telemetry Processor" as Proc
+participant "Link Manager" as LM
+
+note over Client, WS
+  Acceptance (L2-RTS-001): GIVEN concurrent subscriptions
+  WHEN server messages are received THEN each message carries
+  call/seq fields enabling deterministic correlation.
+end note
+
+== Two concurrent subscriptions on one socket ==
+
+Client -> WS ++ : { type: "parameters", id: 1, options: {...} }
+WS -> SubMgr ++ : CreateSubscription(session, "parameters")
+SubMgr -> SM : call = ++session.callCounter
+SubMgr --> WS -- : call = 1
+WS --> Client : { type: "reply", seq: 1, data: { replyTo: 1, call: 1 } }
+
+Client -> WS : { type: "links", id: 2, options: {...} }
+WS -> SubMgr ++ : CreateSubscription(session, "links")
+SubMgr -> SM : call = ++session.callCounter
+SubMgr --> WS -- : call = 2
+WS --> Client : { type: "reply", seq: 2, data: { replyTo: 2, call: 2 } }
+
+== Interleaved server-to-client traffic ==
+
+par parameter updates
+  loop each processed telemetry batch
+    Proc -> SubMgr ++ : PublishParameterUpdate(batch)
+    SubMgr -> WS : Emit(call = 1, batch)
+    deactivate SubMgr
+    WS -> SM : seq = ++session.seqCounter
+    WS --> Client : { type: "parameters", call: 1, seq: s, data: {...} }
+  end
+else link state updates
+  loop each link state change
+    LM -> SubMgr ++ : PublishLinkEvent(event)
+    SubMgr -> WS : Emit(call = 2, event)
+    deactivate SubMgr
+    WS -> SM : seq = ++session.seqCounter
+    WS --> Client : { type: "links", call: 2, seq: s, data: {...} }
+  end
+end
+
+note right of Client
+  seq increases monotonically per session
+  (shared counter across all calls);
+  call identifies which subscription a
+  message belongs to, so interleaved
+  messages are deterministically routed.
+end note
+deactivate WS
+@enduml

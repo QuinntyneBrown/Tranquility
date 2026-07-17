@@ -1,0 +1,64 @@
+@startuml parameter-processing-pipeline
+' Requirements: L1-PAR-001, L2-PAR-001, L2-PAR-002, L2-PAR-003, L2-PAR-004
+' Source: docs/specs/parameter-processing/L1.md, docs/specs/parameter-processing/L2.md
+title Parameter Processing Pipeline - End-to-End Nominal Flow
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Data Link" as Link
+participant "Telemetry Processor" as Proc
+participant "Decommutator" as Decom
+database "Mission Database (MDB)" as MDB
+participant "Calibration Engine" as Calib
+participant "Derived Parameter Evaluator" as Derived
+participant "Limit Monitor" as LimitMon
+participant "Alarm Manager" as Alarm
+database "Parameter Cache" as Cache
+participant "Subscription Manager" as SubMgr
+participant "WebSocket API" as WS
+actor "Operator Client" as Client
+
+== Frame ingestion and decommutation ==
+GS -> Link : TM transfer frame (CCSDS)
+activate Link
+Link -> Proc : deliver extracted space packet
+deactivate Link
+activate Proc
+Proc -> Decom ++ : extractParameters(packet)
+Decom -> MDB : resolve SequenceContainer and ParameterType entries
+MDB --> Decom : container layout, encoding definitions
+Decom --> Proc -- : raw samples {rawValue, generationTime, acquisitionTime}
+
+== Calibration and derivation (L2-PAR-001) ==
+Proc -> Calib ++ : calibrate(raw samples)
+Calib -> MDB : active calibration definitions
+MDB --> Calib : polynomial / spline / enumeration calibrators
+Calib --> Proc -- : engineering values (engValue)
+Proc -> Derived ++ : evaluateDependents(updated parameterRefs)
+Derived --> Proc -- : derived parameter results
+
+== Limit and alarm evaluation (L2-PAR-002, L2-PAR-004) ==
+Proc -> LimitMon ++ : evaluateLimits(all samples)
+LimitMon -> MDB : monitoring definitions (alarm ranges)
+MDB --> LimitMon : configured levels per parameter
+LimitMon --> Proc -- : monitoringResult per sample
+Proc -> Alarm ++ : reportStates(previousLevel, currentLevel)
+alt monitoring level changed
+  Alarm -> SubMgr : alarm transition notification
+else level unchanged
+  Alarm --> Proc : no transition emitted
+end
+deactivate Alarm
+
+== Publication (L2-PAR-003) ==
+Proc -> Cache : store latest {rawValue, engValue, monitoringResult}
+Proc -> SubMgr ++ : publish(parameter updates)
+SubMgr -> WS : push updates to matching subscriptions
+note right of WS
+  Payload includes acquisitionTime and
+  generationTime per L2-PAR-003
+end note
+WS -> Client : ParameterData message
+deactivate SubMgr
+deactivate Proc
+@enduml

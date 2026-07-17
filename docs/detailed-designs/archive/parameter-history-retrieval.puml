@@ -1,0 +1,40 @@
+@startuml parameter-history-retrieval
+' Requirements: L1-ARC-001, L2-ARC-001
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Parameter history retrieval - GET /api/archive/{instance}/parameters/{name}
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "GetParameterHistory Handler" as Handler
+participant "Instance Registry" as Registry
+participant "MDB Model" as MDB
+database "Parameter Archive Store" as Store
+
+Client -> HTTP : GET /api/archive/{instance}/parameters/{name}\n?start=T0&stop=T1&limit=N&order=desc
+activate HTTP
+HTTP -> Handler : GetParameterHistoryQuery(instance, name,\nstart, stop, limit, order)
+activate Handler
+Handler -> Registry : resolve(instance)
+activate Registry
+Registry --> Handler : instance context
+deactivate Registry
+Handler -> MDB : lookupParameter(name)
+activate MDB
+MDB --> Handler : parameter definition (pid)
+deactivate MDB
+Handler -> Store : readValues(pid, start, stop)
+activate Store
+Store --> Handler : values with genTime in [T0, T1)
+deactivate Store
+Handler -> Handler : apply documented query controls\n(limit, order, norepeat)
+Handler --> HTTP : bounded value page
+deactivate Handler
+HTTP --> Client : 200 OK { values[], continuationToken? }
+deactivate HTTP
+
+note right of Store
+  AC (L2-ARC-001): GIVEN archived parameter data
+  WHEN history endpoint is queried with time bounds
+  THEN returned values are bounded by the requested interval.
+end note
+@enduml

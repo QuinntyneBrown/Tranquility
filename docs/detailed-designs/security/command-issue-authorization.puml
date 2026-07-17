@@ -1,0 +1,62 @@
+@startuml command-issue-authorization
+' Requirements: L1-SEC-001, L2-SEC-003, L2-SEC-004
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title Command Issue - Authorization Check, Audit of Grant and Denial
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "Authorization Service" as AZ
+participant "Command Handler" as CMD
+queue "Command Queue" as CQ
+participant "Audit Logger" as AUD
+database "Audit Log" as ADB
+
+OP -> API : POST /api/processors/{instance}/{processor}/commands/{command} { args }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (authenticated user)
+deactivate MW
+API -> AZ : CheckPrivilege(principal, CommandPrivilege(command))
+activate AZ
+AZ -> AZ : resolve roles and privilege grants for principal
+
+alt privilege granted
+  AZ --> API : authorized
+  API -> CMD : IssueCommandRequest(principal, command, args)
+  activate CMD
+  CMD -> CMD : validate arguments against MDB command definition
+  CMD -> CQ : enqueue prepared command for release
+  CMD -> AUD : Record(event=command-uplink, actor=principal,\naction=command-issue({command}), timestamp, outcome=issued)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> CMD : recorded
+  deactivate AUD
+  CMD --> API : CommandId, generation time
+  deactivate CMD
+  API --> OP : 200 OK { id, generationTime, queue }
+else privilege missing
+  note right of AZ
+    L2-SEC-003: GIVEN an authenticated user lacking required
+    privilege WHEN privileged control methods are called
+    THEN requests are denied with authorization error.
+  end note
+  AZ --> API : denied (missing CommandPrivilege)
+  API -> AUD : Record(event=authz-denial, actor=principal,\naction=command-issue({command}), timestamp, outcome=denied)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> API : recorded
+  deactivate AUD
+  API --> OP : 403 Forbidden { authorization error }
+end
+deactivate AZ
+deactivate API
+
+note over AUD, ADB
+  L2-SEC-004: both the issued command uplink action and the
+  authorization denial produce immutable audit entries with
+  actor, action, timestamp, and outcome.
+end note
+@enduml

@@ -1,0 +1,54 @@
+@startuml parameters-subscription-nominal
+' Requirements: L2-RTS-002, L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Parameters Subscription - Nominal Telemetry-Driven Updates
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+participant "MDB Model" as MDB
+participant "Parameter Cache" as Cache
+participant "Telemetry Processor" as Proc
+participant "Decommutation Engine" as Decom
+participant "UDP Data Link" as Link
+actor "Ground Station" as GS
+
+== Subscribe ==
+
+Client -> WS ++ : { type: "parameters", id: 1,\n  options: { instance, processor, id: [param names] } }
+WS -> SubMgr ++ : CreateParameterSubscription(session, options)
+SubMgr -> MDB ++ : ResolveParameters(names)
+MDB --> SubMgr -- : parameter descriptors (numeric ids)
+SubMgr -> Cache ++ : GetCurrentValues(descriptors)
+Cache --> SubMgr -- : latest known values
+SubMgr --> WS -- : call = c, mapping, initial values
+WS --> Client : { type: "reply", seq: n, data: { replyTo: 1, call: c } }
+WS --> Client : { type: "parameters", call: c, seq: n+1,\n  data: { mapping, values: [initial] } }
+deactivate WS
+
+== Telemetry arrival drives updates ==
+
+note over Proc, GS
+  Acceptance (L2-RTS-002): GIVEN a valid parameters
+  subscription request WHEN telemetry arrives THEN parameter
+  updates are emitted on the subscription stream.
+end note
+
+loop while telemetry flows and subscription is active
+  GS -> Link ++ : CCSDS frame (UDP datagram)
+  Link -> Proc ++ : ingest frame -> extract packets
+  Proc -> Decom ++ : Decommutate(packet)
+  Decom -> MDB : container/parameter definitions
+  Decom --> Proc -- : parameter values (raw + engineering)
+  Proc -> Cache : UpdateValues(batch)
+  Proc -> SubMgr ++ : PublishParameterDelivery(batch)
+  deactivate Proc
+  deactivate Link
+  SubMgr -> SubMgr : filter batch against\nsubscribed parameter set
+  SubMgr -> WS ++ : Emit(call = c, matched values)
+  deactivate SubMgr
+  WS --> Client : { type: "parameters", call: c, seq: n+i,\n  data: { values: [{ numericId, engValue,\n  rawValue, generationTime, acquisitionTime }] } }
+  deactivate WS
+end
+@enduml

@@ -1,0 +1,34 @@
+@startuml parameter-calibration
+' Requirements: L1-PAR-001, L2-PAR-001
+' Source: docs/specs/parameter-processing/L1.md, docs/specs/parameter-processing/L2.md
+title Raw-to-Engineering Value Calibration
+autonumber
+
+participant "Telemetry Processor" as Proc
+participant "Calibration Engine" as Calib
+database "Mission Database (MDB)" as MDB
+database "Parameter Cache" as Cache
+
+[-> Proc : raw parameter sample from decommutation\n{parameterRef, rawValue, times}
+activate Proc
+Proc -> Calib ++ : calibrate(parameterRef, rawValue)
+Calib -> MDB ++ : getActiveCalibration(parameterRef)
+MDB --> Calib -- : calibration definition (or none)
+alt active calibration found
+  note right of Calib
+    GIVEN a raw telemetry sample with calibration metadata
+    WHEN processed
+    THEN output contains expected engineering value
+  end note
+  Calib -> Calib : apply polynomial / spline /\nenumeration conversion
+  Calib --> Proc : engValue (engineering units)
+else no calibration defined for parameter
+  Calib --> Proc : engValue = rawValue (identity pass-through)
+else conversion fails (value outside calibrator domain)
+  Calib --> Proc : sample flagged INVALID, no engValue
+end
+deactivate Calib
+Proc -> Cache : store {rawValue, engValue, validity}
+[<- Proc : calibrated sample continues to limit monitoring
+deactivate Proc
+@enduml

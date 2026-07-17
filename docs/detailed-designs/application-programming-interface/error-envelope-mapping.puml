@@ -1,0 +1,42 @@
+@startuml error-envelope-mapping
+' Requirements: L1-API-002, L2-API-004
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title Exception envelope mapping for non-2xx API responses
+autonumber
+
+actor "Operator Client" as Client
+participant "HTTP API" as Http
+participant "Exception Envelope Middleware" as ExMw
+participant "Route Handler" as Handler
+
+Client -> Http ++ : any API request
+Http -> ExMw ++ : invoke pipeline
+ExMw -> Handler ++ : dispatch
+
+alt request is malformed (bad body, bad query, bad enum value)
+  Handler --> ExMw : throws BadRequestException(msg)
+  ExMw -> ExMw : map to 400\nbuild { "exception": { "type", "msg" } }
+  ExMw --> Http : 400 Bad Request\n{ "exception": { "type": "BadRequestException",\n"msg": "..." } }
+else resource does not exist
+  Handler --> ExMw : throws NotFoundException(msg)
+  ExMw -> ExMw : map to 404\nbuild { "exception": { "type", "msg" } }
+  ExMw --> Http : 404 Not Found\n{ "exception": { "type": "NotFoundException",\n"msg": "..." } }
+else caller lacks required privilege
+  Handler --> ExMw : throws ForbiddenException(msg)
+  ExMw -> ExMw : map to 403\nbuild { "exception": { "type", "msg" } }
+  ExMw --> Http : 403 Forbidden\n{ "exception": { "type": "ForbiddenException",\n"msg": "..." } }
+else unexpected server fault
+  Handler --> ExMw -- : unhandled exception
+  ExMw -> ExMw : map to 500\nbuild { "exception": { "type", "msg" } }
+  ExMw --> Http -- : 500 Internal Server Error\n{ "exception": { "type": "InternalServerErrorException",\n"msg": "..." } }
+end
+
+Http --> Client -- : non-2xx response,\nContent-Type: application/json,\ndocumented exception envelope
+note right of Client
+  GIVEN an invalid API request
+  WHEN Tranquility returns an error
+  THEN the body contains
+  exception.type and exception.msg
+  (documented wire semantics, L1-API-002)
+end note
+@enduml

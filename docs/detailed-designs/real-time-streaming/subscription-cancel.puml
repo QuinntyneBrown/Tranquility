@@ -1,0 +1,43 @@
+@startuml subscription-cancel
+' Requirements: L1-RTS-001, L2-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Subscription Cancel - Correlated Teardown of a Single Call
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+participant "Telemetry Processor" as Proc
+
+== Active subscription ==
+
+loop updates flowing on call = c
+  Proc -> SubMgr ++ : PublishParameterDelivery(batch)
+  SubMgr -> WS ++ : Emit(call = c, batch)
+  deactivate SubMgr
+  WS --> Client : { type: "parameters", call: c, seq: n, data }
+  deactivate WS
+end
+
+== Cancel request ==
+
+Client -> WS ++ : { type: "cancel", id: 9, options: { call: c } }
+WS -> SubMgr ++ : CancelSubscription(session, call = c)
+
+alt call number belongs to this session
+  SubMgr -> SubMgr : detach listeners,\nremove subscription for call = c
+  SubMgr --> WS : cancelled
+  deactivate SubMgr
+  WS --> Client : { type: "reply", seq: n+1, data: { replyTo: 9 } }
+  note right of Client
+    After the reply, no further messages
+    carry call = c; other calls on the same
+    session continue unaffected (L2-RTS-001
+    correlation makes this verifiable).
+  end note
+else unknown call number
+  SubMgr --> WS -- : not found
+  WS --> Client : { type: "reply", seq: n+1, data: { replyTo: 9,\n  exception: { code: 404, msg: "unknown call" } } }
+end
+deactivate WS
+@enduml

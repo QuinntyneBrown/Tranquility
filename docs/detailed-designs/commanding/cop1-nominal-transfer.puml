@@ -1,0 +1,53 @@
+@startuml cop1-nominal-transfer
+' Requirements: L1-CMD-001, L2-CMD-003
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title COP-1 nominal AD-mode transfer (mission profile per CCSDS 232.1-B)
+autonumber
+
+participant "Command Dispatcher" as DISP
+participant "COP-1 FOP Engine" as FOP
+participant "CLTU Encoder" as CLTU
+participant "TC Data Link" as LINK
+participant "Ground Station" as GS
+participant "Spacecraft" as SC
+
+== AD service initialization ==
+
+DISP -> FOP ++ : Directive: Initiate AD service (with CLCW check)
+FOP -> FOP : State S6 (Initial) -> S4 (Initializing)\nwait for clean CLCW
+SC --> GS : CLCW (lockout=0, wait=0, retransmit=0)
+GS --> LINK : CLCW report
+LINK --> FOP : CLCW
+FOP -> FOP : State S4 -> S1 (Active)\nNN(R) = N(R), V(S) aligned
+FOP --> DISP -- : AD service ready
+
+== Frame transfer ==
+
+loop for each released TC frame
+    DISP -> FOP ++ : Transmit(TC frame)
+    FOP -> FOP : Assign frame sequence number V(S),\nappend to sent_queue, V(S) = V(S) + 1
+    FOP -> CLTU ++ : Encode(AD frame)
+    CLTU --> FOP -- : CLTU
+    FOP -> LINK ++ : Radiate(CLTU)
+    LINK -> GS : uplink CLTU
+    GS -> SC : RF uplink
+    LINK --> FOP -- : radiated
+    FOP -> FOP : Start/restart Timer
+    FOP --> DISP -- : frame under transfer
+end
+
+== Acknowledgement via CLCW ==
+
+SC --> GS : CLCW (N(R) advanced, retransmit=0)
+GS --> LINK : CLCW report
+LINK --> FOP ++ : CLCW
+FOP -> FOP : Acknowledge frames with\nsequence number < N(R),\nremove from sent_queue,\ncancel Timer when sent_queue empty
+FOP --> DISP -- : positive confirm (frames accepted)
+
+note over FOP
+    AC L2-CMD-003: GIVEN a COP-1 session configured to mission
+    defaults WHEN command transfer executes THEN observed protocol
+    state transitions follow the selected profile
+    (S6 -> S4 -> S1, V(S)/NN(R) bookkeeping per CCSDS 232.1-B).
+end note
+@enduml

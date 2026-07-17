@@ -1,0 +1,56 @@
+@startuml corpus-parallel-ingest
+' Requirements: L2-DIF-001, L1-DIF-001
+' Source: docs/specs/differential-conformance/L1.md, docs/specs/differential-conformance/L2.md
+title Parallel corpus ingest - byte-identical ordered replay with mismatch abort
+autonumber
+
+participant "Harness Orchestrator" as Orch
+database "Corpus Store" as Corpus
+participant "Corpus Replayer" as Rep
+participant "SUT Link Adapter\n(UDP/TCP)" as SutLink
+participant "Reference Link Adapter\n(UDP/TCP)" as RefLink
+participant "Tranquility Instance (SUT)" as SUT
+participant "Reference System" as Ref
+database "Audit Log" as Audit
+
+Orch -> Corpus ++ : OpenCorpusStream(corpusId)
+Corpus --> Orch -- : ordered record stream + corpusSha256
+Orch -> Rep ++ : BeginReplay(stream, targets=[SUT, Reference])
+
+loop for each corpus record, in recorded order
+    Rep -> Rep : read record bytes,\nupdate per-target running digest
+    par same bytes to both targets, same sequence number
+        Rep -> SutLink ++ : Send(recordBytes, seq=n)
+        SutLink -> SUT : frame/datagram (recordBytes)
+        SutLink --> Rep -- : sent(seq=n)
+    else
+        Rep -> RefLink ++ : Send(recordBytes, seq=n)
+        RefLink -> Ref : frame/datagram (recordBytes)
+        RefLink --> Rep -- : sent(seq=n)
+    end
+end
+
+Rep -> Rep : finalize per-target digests\nand sequence counters
+
+alt per-target digests equal corpusSha256 and counters equal
+    Rep --> Orch : IngestComplete(corpusSha256, recordCount)
+    Orch -> Audit ++ : append INGEST_EQUIVALENT\n{ runId, corpusSha256, recordCount }
+    Audit --> Orch -- : evidence recorded
+    note over Rep
+      AC L2-DIF-001: GIVEN a recorded telemetry/command
+      corpus WHEN differential harness runs THEN both
+      systems consume the same corpus bytes in the same order.
+    end note
+else byte or order mismatch detected on either target
+    Rep --> Orch : IngestFault(target, seq,\nexpectedDigest, actualDigest)
+    deactivate Rep
+    Orch -> Audit ++ : append INGEST_DIVERGENT { runId, fault }
+    Audit --> Orch -- : evidence recorded
+    Orch -> Orch : abort run before comparison stage
+    note right of Orch
+      Input equivalence is a precondition:
+      no output equivalence claim is meaningful
+      without identical ingest (L2-DIF-001 rationale).
+    end note
+end
+@enduml

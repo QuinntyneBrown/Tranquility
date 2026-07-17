@@ -1,0 +1,50 @@
+@startuml tco-set-coefficients
+' Requirements: L1-TIM-001, L2-TIM-002
+' Source: docs/specs/time-correlation/L1.md, docs/specs/time-correlation/L2.md
+title TCO Coefficient Update - POST /api/tco/{instance}/{serviceName}/coefficients
+autonumber
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Filter" as AUTHZ
+participant "SetTcoCoefficients Command Handler" as CH
+participant "Instance Registry" as REG
+participant "Time Correlation Service" as TCO
+participant "Audit Log" as AUD
+
+OP -> API ++ : POST /api/tco/{instance}/{serviceName}/coefficients\n{coefficientTime, gradient, offset}
+API -> AUTHZ ++ : Authorize(caller, ControlTimeCorrelation)
+AUTHZ --> API -- : decision
+alt caller lacks ControlTimeCorrelation privilege
+    API --> OP : 403 Forbidden {message}
+else caller authorized
+    API -> CH ++ : SetTcoCoefficientsCommand(instance, serviceName, coefficients)
+    CH -> REG ++ : ResolveTcoService(instance, serviceName)
+    REG --> CH -- : service handle
+    CH -> TCO ++ : ValidateCoefficients(coefficientTime, gradient, offset)
+    TCO --> CH -- : validation result
+    alt coefficients invalid (gradient <= 0, unparseable coefficientTime)
+        CH --> API : ValidationError(field, reason)
+        API --> OP : 400 Bad Request {field, reason}
+    else valid coefficient set
+        CH -> TCO ++ : ApplyCoefficients(coefficientTime, gradient, offset)
+        TCO -> TCO : replace active coefficient set
+        TCO -> TCO : reset sample buffer and deviation state
+        TCO --> CH -- : applied
+        CH -> AUD ++ : Record(tco-coefficients-change, caller, before/after values)
+        AUD --> CH -- : recorded
+        CH --> API : Ok
+        API --> OP : 200 OK
+    end
+    deactivate CH
+end
+deactivate API
+
+== Subsequent status reflects updated values (valid-change path) ==
+OP -> API ++ : GET /api/tco/{instance}/{serviceName}/status
+API --> OP -- : 200 OK {coefficientTime, gradient, offset reflect updated values}
+note right of OP
+    AC L2-TIM-002: GIVEN a valid configuration change
+    WHEN set-coefficients is invoked
+    THEN subsequent status reflects updated values.
+end note
+@enduml

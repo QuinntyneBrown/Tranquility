@@ -1,0 +1,57 @@
+@startuml uslp-frame-ingest
+' Requirements: L1-SDL-001, L2-SDL-003
+' Source: docs/specs/space-data-link-protocol/L1.md, docs/specs/space-data-link-protocol/L2.md
+title USLP Transfer Frame Ingestion (CCSDS 732.1-B mission profile) - Nominal
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Frame Link" as UDP
+participant "Data Link Manager" as DLM
+participant "Mission Profile Registry" as MPR
+participant "USLP Frame Decoder" as USD
+participant "Virtual Channel Demux" as VCD
+participant "Packet Extractor" as PE
+participant "Telemetry Processor" as TP
+database "Frame Archive" as FA
+
+== Link initialization ==
+DLM -> MPR : ResolveProfile(linkId)
+activate MPR
+MPR --> DLM : UslpMissionProfile { scid, mapIds, tfdzConstructionRule, fecfPresent, variableLength }
+deactivate MPR
+
+== Frame reception and acceptance ==
+loop for each downlinked USLP transfer frame
+    GS -> UDP : UDP datagram (USLP transfer frame octets)
+    activate UDP
+    UDP -> DLM : OnFrameReceived(rawFrame, linkId, receiveTime)
+    deactivate UDP
+    activate DLM
+    DLM -> USD : Decode(rawFrame, uslpMissionProfile)
+    activate USD
+    USD -> USD : Parse primary header (version, SCID, source/dest flag, VCID, MAP ID, frame length)
+    USD -> USD : Validate declared frame length, sequence count field, FECF against profile
+    alt frame conforms to selected mission profile
+        USD --> DLM : UslpTransferFrame
+        DLM -> FA : Append(rawFrame, linkId, receiveTime)
+        DLM -> VCD : Route(uslpTransferFrame) by VCID and MAP ID
+        activate VCD
+        VCD -> PE : ExtractPackets(tfdz, tfdzConstructionRule)
+        activate PE
+        PE --> VCD : SpacePacket[]
+        deactivate PE
+        VCD -> TP : Deliver(spacePackets)
+        deactivate VCD
+        note right of TP
+          AC L2-SDL-003: GIVEN USLP frames compliant with
+          the mission profile WHEN ingested THEN frames are
+          accepted for downstream packet extraction.
+        end note
+    else profile violation detected
+        USD --> DLM : FrameValidationError(reason, frameContext)
+        ref over DLM, USD : Diagnostic path: see frame-validation-diagnostic.puml (L1-SDL-002, L2-SDL-005)
+    end
+    deactivate USD
+    deactivate DLM
+end
+@enduml

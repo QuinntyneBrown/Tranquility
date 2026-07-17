@@ -1,0 +1,78 @@
+@startuml iam-group-management
+' Requirements: L1-SEC-001, L2-SEC-001
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title IAM Group Resource Operations (list, create, update)
+autonumber
+
+actor "Administrator" as ADM
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "IAM Handler" as IAM
+database "IAM Store" as DB
+
+note over ADM, DB
+  L2-SEC-001: GIVEN an authenticated administrator
+  WHEN IAM list/create/update methods are called
+  THEN responses follow documented IAM resource structures.
+end note
+
+== List groups ==
+ADM -> API : GET /api/iam/groups
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : ListGroupsQuery
+activate IAM
+IAM -> DB : select group records
+activate DB
+DB --> IAM : group rows
+deactivate DB
+IAM --> API : ListGroupsResponse (documented group resource structure)
+deactivate IAM
+API --> ADM : 200 OK { groups: [ { name, description, members } ] }
+deactivate API
+
+== Create group ==
+ADM -> API : POST /api/iam/groups { name, description, members }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : CreateGroupCommand
+activate IAM
+IAM -> IAM : validate name uniqueness and member references
+IAM -> DB : insert group record
+activate DB
+DB --> IAM : stored
+deactivate DB
+IAM --> API : GroupResource
+deactivate IAM
+API --> ADM : 201 Created { group }
+deactivate API
+
+== Update group (membership change) ==
+ADM -> API : PATCH /api/iam/groups/{name} { memberAdditions, memberRemovals }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : UpdateGroupCommand
+activate IAM
+IAM -> DB : load group record
+activate DB
+DB --> IAM : group row
+deactivate DB
+IAM -> IAM : resolve member additions/removals against user records
+IAM -> DB : persist updated membership
+activate DB
+DB --> IAM : stored
+deactivate DB
+IAM --> API : GroupResource (updated)
+deactivate IAM
+API --> ADM : 200 OK { group }
+deactivate API
+@enduml

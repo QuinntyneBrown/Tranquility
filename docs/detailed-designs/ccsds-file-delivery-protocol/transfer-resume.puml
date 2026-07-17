@@ -1,0 +1,46 @@
+@startuml transfer-resume
+' Requirements: L1-FDP-001, L2-FDP-002
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title Transfer Resume - POST /api/filetransfer/{instance}/{serviceName}/transfers/{id}:resume
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "ResumeTransferHandler" as RTH
+participant "CFDP Engine" as ENG
+participant "CFDP Transaction" as TXN
+participant "PDU Router" as PR
+database "Transfer Archive" as ARC
+database "Audit Log" as AUD
+
+OP -> API ++ : POST .../transfers/{id}:resume
+API -> RTH ++ : ResumeTransferCommand(instance, serviceName, transferId)
+RTH -> ENG ++ : Resume(transferId)
+
+alt transfer unknown
+    ENG --> RTH : TransferNotFound
+    RTH --> API : NotFound
+    API --> OP : 404 Not Found
+else transfer not in PAUSED state
+    ENG --> RTH : InvalidState(currentState)
+    RTH --> API : Conflict
+    API --> OP : 409 Conflict\n{message: "transfer is not paused"}
+else transfer paused
+    ENG -> TXN ++ : Resume()
+    TXN -> TXN : restart inactivity timers
+    TXN -> PR : resume File Data PDU emission\nfrom last acknowledged offset
+    TXN --> ENG -- : state PAUSED -> RUNNING
+    ENG --> RTH -- : state=RUNNING
+    RTH -> ARC ++ : UpdateTransferRecord(transferId, RUNNING)
+    ARC --> RTH --
+    RTH -> AUD ++ : Append(caller, "transfer.resume", transferId)
+    AUD --> RTH --
+    RTH --> API -- : TransferInfo(state=RUNNING)
+    API --> OP -- : 200 OK {id, state: "RUNNING"}
+    note right of OP
+        L2-FDP-002 AC: GIVEN an active transfer
+        WHEN resume is invoked THEN transfer state
+        transitions reflect the requested operation.
+    end note
+end
+@enduml

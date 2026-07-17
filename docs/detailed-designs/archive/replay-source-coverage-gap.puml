@@ -1,0 +1,63 @@
+@startuml replay-source-coverage-gap
+' Requirements: L2-ARC-004, L1-ARC-001
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Replay-mode fallback when parameter archive coverage is incomplete
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "GetParameterHistory Handler" as Handler
+participant "Processor Registry" as ProcReg
+participant "Replay Processor" as Replay
+participant "Decommutation Engine" as Decom
+database "Parameter Archive Store" as ParamStore
+database "Packet Archive Store" as PktStore
+
+Client -> HTTP : GET /api/archive/{instance}/parameters/{name}\n?start=T0&stop=T1 (no explicit source)
+activate HTTP
+HTTP -> Handler : GetParameterHistoryQuery(instance, name, start, stop)
+activate Handler
+Handler -> ParamStore : checkCoverage(pid, T0, T1)
+activate ParamStore
+ParamStore --> Handler : coverage report (built segments vs gaps)
+deactivate ParamStore
+
+alt coverage complete for [T0, T1)
+  Handler -> ParamStore : readValues(pid, T0, T1)
+  activate ParamStore
+  ParamStore --> Handler : archived values
+  deactivate ParamStore
+  Handler --> HTTP : values (source: parameter-archive)
+  HTTP --> Client : 200 OK { values[] }
+else coverage gap detected - fall back to replay source
+  Handler -> ProcReg : createReplayProcessor(instance,\ngap interval, parameter filter)
+  activate ProcReg
+  ProcReg -> Replay : start(gapStart, gapStop, filter)
+  activate Replay
+  ProcReg --> Handler : replay processor handle
+  deactivate ProcReg
+  loop packet batches over gap interval
+    Replay -> PktStore : readPackets(nextRange)
+    activate PktStore
+    PktStore --> Replay : archived packets
+    deactivate PktStore
+    Replay -> Decom : decommutate with active MDB
+    activate Decom
+    Decom --> Replay : parameter values
+    deactivate Decom
+    Replay --> Handler : emit values for gap interval
+  end
+  Replay -> ProcReg : replay complete, unregister
+  deactivate Replay
+  Handler -> Handler : merge archive segments and\nreplayed values, order by genTime
+  Handler --> HTTP : merged values bounded by [T0, T1)
+  HTTP --> Client : 200 OK { values[], source: replay }
+end
+deactivate Handler
+deactivate HTTP
+
+note right of Handler
+  Rationale (L2-ARC-004): replay source mode is needed
+  when archive coverage is incomplete or reprocessing
+  is required.
+end note
+@enduml

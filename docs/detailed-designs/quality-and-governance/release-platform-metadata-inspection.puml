@@ -1,0 +1,40 @@
+@startuml release-platform-metadata-inspection
+' Requirements: L1-QLT-001, L2-QLT-001
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title Release platform metadata inspection (.NET LTS + Linux-first gate)
+autonumber
+
+actor "Release Engineer" as RE
+actor "CI Pipeline" as CI
+participant "Platform Gate Step" as GATE
+participant "Release Metadata Validator" as VAL
+database "Release Manifest\n(csproj / release.yaml)" as MAN
+
+RE -> CI ++ : Tag release candidate
+CI -> GATE ++ : Run platform-governance stage
+
+GATE -> VAL ++ : ValidatePlatformTargets(releaseRef)
+VAL -> MAN ++ : Read TargetFramework, RuntimeIdentifiers,\nsupported OS matrix
+MAN --> VAL -- : metadata
+
+note right of VAL
+  L2-QLT-001 acceptance:
+  GIVEN release metadata WHEN reviewed
+  THEN target runtime and OS support include
+  current .NET LTS and Linux.
+end note
+
+VAL -> VAL : Check TargetFramework == current .NET LTS
+VAL -> VAL : Check RuntimeIdentifiers include linux-x64\nand Linux listed as first-class deployment OS
+
+alt Metadata compliant
+  VAL --> GATE : Compliant(runtime=LTS, os=[linux, ...])
+  GATE --> CI : Stage passed
+  CI --> RE : Release candidate accepted\n(platform constraints satisfied, L1-QLT-001)
+else Missing LTS target or Linux support
+  VAL --> GATE -- : Violation(missing=LTS | linux-x64)
+  GATE --> CI -- : Stage failed with violation report
+  CI --> RE -- : Release candidate rejected;\nfix platform metadata before re-tag
+end
+
+@enduml

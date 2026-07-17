@@ -1,0 +1,62 @@
+@startuml cfdp-downlink-transaction
+' Requirements: L1-FDP-001, L2-FDP-004
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title CFDP Downlink Transaction - Spacecraft-Initiated File Delivery to Ground
+autonumber
+
+participant "Spacecraft" as SC
+participant "Ground Station" as GS
+participant "UDP Data Link" as LNK
+participant "PDU Router" as PR
+participant "CFDP Engine" as ENG
+participant "CFDP Transaction" as TXN
+database "Object Store" as OBJ
+database "Transfer Archive" as ARC
+
+== Metadata phase ==
+SC -> GS : downlink Metadata PDU
+GS -> LNK : frame carrying Metadata PDU
+LNK -> PR ++ : Metadata PDU
+PR -> ENG ++ : deliver Metadata PDU (destination = local entity)
+ENG -> TXN ++ : create receiving CFDP Transaction\n(transactionId from PDU, state=RUNNING)
+ENG -> ARC : InsertTransferRecord(transferId,\ndirection=DOWNLOAD, state=RUNNING)
+deactivate ENG
+deactivate PR
+
+== File Data phase ==
+loop for each File Data PDU
+    SC -> GS : downlink File Data PDU
+    GS -> LNK : frame carrying File Data PDU
+    LNK -> PR : File Data PDU
+    PR -> TXN : File Data (offset, segment bytes)
+    TXN -> TXN : reassemble segment, track received ranges
+end
+
+== EOF / Finished handshake ==
+SC -> GS : downlink EOF PDU (checksum, fileSize)
+GS -> LNK : frame carrying EOF PDU
+LNK -> PR : EOF PDU
+PR -> TXN : EOF (condition=NO_ERROR)
+TXN -> PR : ACK (EOF) PDU toward spacecraft
+TXN -> TXN : verify checksum per\ndeclared profile checksum type
+
+alt checksum valid and file complete
+    TXN -> OBJ ++ : PutObject(incoming bucket, objectName, bytes)
+    OBJ --> TXN --
+    TXN -> PR : Finished PDU (delivery complete,\nfile status=RETAINED)
+    PR -> LNK : encapsulated Finished PDU
+    LNK -> GS : frame carrying Finished PDU
+    GS -> SC : uplink Finished PDU
+    TXN -> ENG : state change RUNNING -> COMPLETED
+    ENG -> ARC : UpdateTransferRecord(transferId, COMPLETED)
+else checksum failure
+    TXN -> PR : Finished PDU (condition=FILE_CHECKSUM_FAILURE,\nfile status=DISCARDED)
+    TXN -> ENG : state change RUNNING -> FAILED\n(failureReason="checksum mismatch")
+    ENG -> ARC : UpdateTransferRecord(transferId, FAILED)
+    note right of ENG
+        Failure state is pushed to transfer
+        subscribers (see transfer-fault-notification.puml).
+    end note
+end
+deactivate TXN
+@enduml

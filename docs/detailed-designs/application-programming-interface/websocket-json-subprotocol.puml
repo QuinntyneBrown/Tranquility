@@ -1,0 +1,38 @@
+@startuml websocket-json-subprotocol
+' Requirements: L1-API-001, L2-API-003
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title WebSocket handshake - json subprotocol negotiation (nominal)
+autonumber
+
+actor "Subscription Client" as Client
+participant "WebSocket API" as Ws
+participant "Subprotocol Negotiator" as Neg
+participant "WebSocket Session Manager" as Sess
+participant "Subscription Manager" as Sub
+
+Client -> Ws ++ : GET /api/websocket\nUpgrade: websocket\nSec-WebSocket-Protocol: json
+note right of Ws
+  GIVEN a WebSocket upgrade request
+  WHEN the client requests
+  Sec-WebSocket-Protocol: json
+  THEN the session is accepted with
+  JSON message encoding
+end note
+Ws -> Neg ++ : Negotiate(["json"])
+Neg --> Ws -- : selected = json\nencoder = JsonMessageEncoder
+Ws -> Sess ++ : CreateSession(encoding = json)
+Sess --> Ws -- : session (id, seq = 0)
+Ws --> Client : 101 Switching Protocols\nSec-WebSocket-Protocol: json
+
+== Session established (JSON framing) ==
+
+Client -> Ws : { "type": "parameters", "id": 1,\n"options": { "subscription": ... } }
+Ws -> Sub ++ : Subscribe(session, options)
+Sub --> Ws -- : subscription created
+Ws --> Client : { "type": "reply", "call": 1, "seq": 1 }
+loop while subscription active
+  Sub -> Ws : parameter delivery
+  Ws --> Client : { "type": "parameters", "call": 1,\n"seq": n, "data": { ... } }
+end
+deactivate Ws
+@enduml

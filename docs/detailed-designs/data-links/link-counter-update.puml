@@ -1,0 +1,47 @@
+@startuml link-counter-update
+' Requirements: L1-LNK-001, L2-LNK-004
+' Source: docs/specs/data-links/L1.md, docs/specs/data-links/L2.md
+title Link in/out counter accumulation and publication
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP TM Link" as TMLINK
+participant "UDP TC Link" as TCLINK
+participant "Frame Processor" as FP
+participant "Link Manager" as LM
+participant "HTTP API" as API
+actor "Operator/Client" as OP
+
+== Inbound traffic increments dataInCount ==
+loop for each received telemetry datagram
+    GS -> TMLINK ++ : UDP datagram (CCSDS frame)
+    TMLINK -> TMLINK : dataInCount += 1 (monotonic)
+    TMLINK -> FP ++ : IngestFrame(bytes)
+    FP --> TMLINK -- : accepted
+    TMLINK --> GS --
+end
+
+== Outbound traffic increments dataOutCount ==
+loop for each released telecommand frame
+    FP -> TCLINK ++ : SendFrame(CLTU bytes)
+    TCLINK -> TCLINK : dataOutCount += 1 (monotonic)
+    TCLINK -> GS : UDP datagram (CLTU)
+    TCLINK --> FP --
+end
+
+== Status query publishes counters via link information model ==
+OP -> API ++ : GET /api/links/{instance}
+API -> LM ++ : GetLinkDescriptors(instance)
+LM -> TMLINK ++ : GetStatus()
+TMLINK --> LM -- : dataInCount = N, dataOutCount = 0
+LM -> TCLINK ++ : GetStatus()
+TCLINK --> LM -- : dataInCount = 0, dataOutCount = M
+LM --> API -- : LinkInfo[] with in/out counters
+API --> OP -- : 200 OK { links: [ { dataInCount, dataOutCount }, ... ] }
+note right of API
+  AC L2-LNK-004: GIVEN active link traffic WHEN link
+  status is queried THEN inbound and outbound counters
+  are present and nondecreasing. Counters only decrease
+  on an explicit resetCounters operation.
+end note
+@enduml

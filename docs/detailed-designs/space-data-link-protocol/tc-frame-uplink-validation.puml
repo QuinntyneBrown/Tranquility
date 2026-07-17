@@ -1,0 +1,70 @@
+@startuml tc-frame-uplink-validation
+' Requirements: L1-SDL-001, L2-SDL-004, L2-SDL-005
+' Source: docs/specs/space-data-link-protocol/L1.md, docs/specs/space-data-link-protocol/L2.md
+title TC Transfer Frame Uplink Validation (CCSDS 232.0-B mission profile) - Nominal and Rejection
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "IssueCommandHandler" as ICH
+participant "COP-1 FOP Engine" as FOP
+participant "TC Frame Assembler" as TFA
+participant "TC Protocol Validator" as TPV
+participant "CLTU Encoder" as CLTU
+participant "Uplink Data Link" as UL
+database "Event Log" as EL
+actor "Ground Station" as GS
+
+== Command submission ==
+OP -> API : POST /api/instances/{instance}/commands
+activate API
+API -> ICH : Handle(IssueCommandRequest)
+activate ICH
+ICH -> FOP : Transmit(commandPacket, vcId)
+activate FOP
+
+== TC frame assembly and protocol validation ==
+FOP -> TFA : BuildFrame(segment, scid, vcId, frameSeqNumber, bypassFlag)
+activate TFA
+TFA -> TPV : Validate(tcFrame, tcMissionProfile)
+activate TPV
+TPV -> TPV : Check version, bypass/control flags, SCID, VCID,\nframe length <= profile maximum, sequence number vs FOP state
+
+alt frame passes protocol validation
+    TPV --> TFA : Valid
+    TFA --> FOP : TcTransferFrame
+    == Uplink ==
+    FOP -> CLTU : Encode(tcTransferFrame)
+    activate CLTU
+    CLTU --> FOP : CLTU (start sequence, BCH codeblocks, tail sequence)
+    deactivate CLTU
+    FOP -> UL : Send(cltu, linkId)
+    activate UL
+    UL -> GS : CLTU bitstream for radiation
+    deactivate UL
+    FOP --> ICH : Transmitted (AD/BD frame queued on virtual channel)
+    ICH --> API : CommandAccepted(commandId)
+    API --> OP : 202 Accepted { commandId }
+    note right of API
+      AC L2-SDL-004: GIVEN TC frames compliant with the
+      mission profile WHEN processed for uplink THEN frames
+      pass protocol validation.
+    end note
+else profile violation detected
+    TPV --> TFA : Violation(reason, fieldContext)
+    TFA --> FOP : FrameValidationError(reason, frameContext)
+    FOP -> EL : RecordDiagnostic(severity=ERROR, reason, frameContext)
+    note right of EL
+      AC L2-SDL-005: error diagnostic recorded with
+      failure reason and frame context.
+    end note
+    FOP --> ICH : Rejected(reason)
+    ICH --> API : CommandRejected(reason, diagnosticId)
+    API --> OP : 422 Unprocessable Entity { reason, diagnosticId }
+end
+deactivate TPV
+deactivate TFA
+deactivate FOP
+deactivate ICH
+deactivate API
+@enduml

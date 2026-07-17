@@ -1,0 +1,56 @@
+@startuml link-run-action
+' Requirements: L1-LNK-001, L2-LNK-003
+' Source: docs/specs/data-links/L1.md, docs/specs/data-links/L2.md
+title Execute a link custom action (POST /api/links/{instance}/{link}/actions/{action})
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Service" as AUTHZ
+participant "RunLinkActionCommandHandler" as CH
+participant "Link Manager" as LM
+participant "Link Adapter" as ADP
+database "Audit Log" as AUD
+
+OP -> API ++ : POST /api/links/{instance}/{link}/actions/{action}\n{ message: <action argument> }
+API -> AUTHZ ++ : CheckPrivilege(caller, ControlLinks)
+
+alt caller holds ControlLinks privilege
+    AUTHZ --> API -- : granted
+    API -> CH ++ : RunLinkActionCommand(instance, link, action, message)
+    CH -> LM ++ : FindLink(instance, link)
+    LM --> CH -- : LinkHandle
+    CH -> ADP ++ : GetAdvertisedActions()
+    ADP --> CH -- : ActionSpec[] (id, label, style, enabled)
+
+    alt action advertised and enabled
+        CH -> ADP ++ : ExecuteAction(action, message)
+        alt adapter executes successfully
+            ADP --> CH -- : ActionResult (per method contract)
+            CH -> AUD ++ : Record(caller, "link.runAction",\ninstance, link, action)
+            AUD --> CH --
+            CH --> API -- : ActionResult
+            API --> OP : 200 OK { <action result per\nmethod contract> }
+            note right of API
+              AC L2-LNK-003: GIVEN a link with an advertised
+              action WHEN run-action is invoked THEN action
+              result is returned according to method contract.
+            end note
+        else adapter raises error
+            ADP --> CH : AdapterException
+            deactivate ADP
+            CH --> API : ActionExecutionError
+            deactivate CH
+            API --> OP : 500 Internal Server Error\n{ message: "action failed: <detail>" }
+        end
+    else action not advertised for this link
+        CH --> API : ActionNotFoundError
+        API --> OP : 404 Not Found { message: "unknown action" }
+    end
+else caller lacks privilege
+    AUTHZ --> API : denied
+    deactivate AUTHZ
+    API --> OP : 403 Forbidden { message: "ControlLinks privilege required" }
+    deactivate API
+end
+@enduml

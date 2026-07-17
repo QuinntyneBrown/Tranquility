@@ -1,0 +1,36 @@
+@startuml limit-evaluation-threshold-crossing
+' Requirements: L1-PAR-001, L2-PAR-002
+' Source: docs/specs/parameter-processing/L1.md, docs/specs/parameter-processing/L2.md
+title Limit Evaluation - Threshold Crossing
+autonumber
+
+participant "Telemetry Processor" as Proc
+participant "Limit Monitor" as LimitMon
+database "Mission Database (MDB)" as MDB
+participant "Alarm Manager" as Alarm
+database "Parameter Cache" as Cache
+
+[-> Proc : calibrated parameter sample {parameterRef, engValue}
+activate Proc
+Proc -> LimitMon ++ : evaluate(parameterRef, engValue)
+LimitMon -> MDB ++ : getMonitoringDefinition(parameterRef)
+MDB --> LimitMon -- : configured alarm ranges\n(watch, warning, distress, critical, severe)
+alt engValue within all configured ranges
+  LimitMon --> Proc : monitoringResult = IN_LIMITS
+else engValue crosses a configured threshold
+  note right of LimitMon
+    GIVEN a parameter value that crosses a configured threshold
+    WHEN monitoring executes
+    THEN resulting monitoring state reflects the configured level
+  end note
+  LimitMon -> LimitMon : select most severe violated range
+  LimitMon --> Proc : monitoringResult = configured level\n(e.g. WARNING, CRITICAL)
+else no monitoring definition configured
+  LimitMon --> Proc : monitoringResult = DISABLED
+end
+deactivate LimitMon
+Proc -> Cache : store monitoring state with sample
+Proc -> Alarm : forward {previousLevel, currentLevel}\nfor transition detection
+[<- Proc : sample continues to publication
+deactivate Proc
+@enduml

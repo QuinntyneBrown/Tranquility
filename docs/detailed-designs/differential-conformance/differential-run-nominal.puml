@@ -1,0 +1,69 @@
+@startuml differential-run-nominal
+' Requirements: L1-DIF-001, L2-DIF-001, L2-DIF-002
+' Source: docs/specs/differential-conformance/L1.md, docs/specs/differential-conformance/L2.md
+title Differential conformance run - nominal end-to-end execution
+autonumber
+
+actor "CI Pipeline" as CI
+participant "HTTP API" as API
+participant "StartDifferentialRunHandler" as Handler
+participant "Harness Orchestrator" as Orch
+database "Corpus Store" as Corpus
+participant "Corpus Replayer" as Rep
+participant "Tranquility Instance (SUT)" as SUT
+participant "Reference System\n(stock deployment)" as Ref
+participant "Comparison Engine" as Cmp
+database "Report Store" as Reports
+
+CI -> API ++ : POST /api/differential/runs\n{ corpusId, referenceEndpoint }
+API -> Handler ++ : StartDifferentialRunCommand
+Handler -> Orch ++ : CreateRun(corpusId, referenceEndpoint)
+Orch -> Corpus ++ : LoadCorpusManifest(corpusId)
+Corpus --> Orch -- : manifest (recordCount, corpusSha256)
+Orch -> Ref ++ : probe external interfaces\n(HTTP API, telemetry link)
+
+alt reference deployment reachable
+    Ref --> Orch -- : interfaces ready
+    Handler --> API : 202 Accepted { runId, state: RUNNING }
+    API --> CI : 202 Accepted { runId }
+
+    == Stage 1: parallel corpus ingest (see corpus-parallel-ingest) ==
+    Orch -> Rep ++ : Replay(corpus, targets=[SUT, Reference])
+    par identical bytes, identical order
+        Rep -> SUT : corpus records (recorded telemetry/command bytes)
+    else
+        Rep -> Ref : corpus records (recorded telemetry/command bytes)
+    end
+    Rep --> Orch -- : IngestComplete(sha256 verified on both targets)
+    note right of Rep
+      AC L2-DIF-001: both systems consume the
+      same corpus bytes in the same order.
+    end note
+
+    == Stage 2: external output capture ==
+    Orch -> SUT ++ : capture outputs via published API\n(parameters, conversions, timestamps,\nalarms, command history, API responses)
+    SUT --> Orch -- : SUT observation set
+    Orch -> Ref ++ : capture outputs via published API\n(same surfaces, external observation only)
+    Ref --> Orch -- : reference observation set
+
+    == Stage 3: comparison and reporting (see surface-comparison-report) ==
+    Orch -> Cmp ++ : Compare(sutObservations, refObservations)
+    Cmp --> Orch -- : per-surface equivalence/divergence records
+    note right of Cmp
+      AC L2-DIF-002: each required output surface
+      has an equivalence or divergence record.
+    end note
+    Orch -> Reports ++ : PersistReport(runId, records)
+    Reports --> Orch -- : reportId
+    Orch --> Handler -- : run COMPLETE { reportId }
+    Handler --> API -- : run status updated
+    CI -> API ++ : GET /api/differential/runs/{runId}/report
+    API --> CI -- : 200 OK { per-surface records, divergence list }
+else reference deployment unreachable
+    Ref --> Orch : probe timeout / connection refused
+    deactivate Ref
+    Orch --> Handler -- : RunRejected(REFERENCE_UNAVAILABLE)
+    Handler --> API -- : rejection
+    API --> CI -- : 503 Service Unavailable\n{ error: "reference deployment unreachable" }
+end
+@enduml

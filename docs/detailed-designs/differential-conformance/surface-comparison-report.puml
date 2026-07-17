@@ -1,0 +1,50 @@
+@startuml surface-comparison-report
+' Requirements: L2-DIF-002, L1-DIF-001
+' Source: docs/specs/differential-conformance/L1.md, docs/specs/differential-conformance/L2.md
+title Multi-surface comparison and report generation
+autonumber
+
+participant "Harness Orchestrator" as Orch
+participant "Comparison Engine" as Cmp
+participant "SUT Capture Adapter" as SutCap
+participant "Reference Capture Adapter" as RefCap
+database "Divergence Store" as Div
+database "Report Store" as Reports
+
+Orch -> Cmp ++ : CompareRun(runId)
+
+loop for each required surface:\nparameter values, engineering conversions,\ntimestamps, alarm states, command history, API responses
+    Cmp -> SutCap ++ : FetchCapture(runId, surface)
+    SutCap --> Cmp -- : SUT observations for surface
+    Cmp -> RefCap ++ : FetchCapture(runId, surface)
+    RefCap --> Cmp -- : reference observations for surface
+
+    alt both captures present and observations equivalent
+        Cmp -> Cmp : normalize and compare\n(tolerance profile per surface)
+        Cmp -> Reports : append EquivalenceRecord\n{ runId, surface, sampleCount }
+    else captures present but observations differ
+        Cmp -> Div ++ : append DivergenceRecord\n{ runId, surface, sutValue, refValue,\ncontext, state: UNTRIAGED }
+        Div --> Cmp -- : divergenceId
+        Cmp -> Reports : append DivergenceRecord reference\n{ runId, surface, divergenceId }
+    else capture missing for surface on either side
+        Cmp -> Reports : append IncompleteSurfaceRecord\n{ runId, surface, missingSide }
+        Cmp -> Cmp : mark run coverage gate FAILED
+    end
+end
+
+Cmp --> Orch -- : ComparisonComplete\n{ perSurfaceRecords, divergenceCount, coverageGate }
+
+alt every required surface has an equivalence or divergence record
+    Orch -> Reports ++ : FinalizeReport(runId, state: COMPLETE)
+    Reports --> Orch -- : reportId
+    note right of Orch
+      AC L2-DIF-002: GIVEN completed differential execution
+      WHEN reports are generated THEN each required output
+      surface has an equivalence or divergence record.
+    end note
+else one or more surfaces incomplete
+    Orch -> Reports ++ : FinalizeReport(runId,\nstate: INCOMPLETE_COVERAGE)
+    Reports --> Orch -- : reportId
+    Orch -> Orch : fail run coverage gate\n(report unusable as conformance evidence)
+end
+@enduml

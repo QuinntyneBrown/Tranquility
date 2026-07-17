@@ -1,0 +1,40 @@
+@startuml packet-primary-header-decode
+' Requirements: L1-SPP-001, L2-SPP-001
+' Source: docs/specs/space-packet-processing-and-decommutation/L1.md, docs/specs/space-packet-processing-and-decommutation/L2.md
+title Space Packet Primary Header Decode and Routing (nominal)
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Data Link" as UDP
+participant "Frame Processor" as FP
+participant "Packet Extractor" as PE
+participant "Primary Header Decoder" as PHD
+participant "Packet Router" as PR
+database "Raw Packet Archive" as ARC
+
+GS -> UDP ++ : telemetry frame datagram
+UDP -> FP ++ : raw frame bytes
+FP -> PE ++ : extract space packets (M_PDU demux)
+PE -> PHD ++ : decode primary header (6 octets)
+PHD -> PHD : read version number, type flag,\nsec hdr flag, APID, sequence flags,\nsequence count, packet length
+PHD -> PHD : validity checks pass\n(version == 0, declared packet length\nconsistent with received buffer)
+note right of PHD
+  L2-SPP-001 acceptance:
+  GIVEN a valid space packet
+  WHEN parsed
+  THEN header fields used by routing
+  are extracted with expected values.
+end note
+PHD --> PE -- : PrimaryHeader { apid, type,\nseqFlags, seqCount, length }
+PE -> ARC : archive raw packet bytes\n+ ground receive time
+PE -> PR ++ : route(packet, primaryHeader)
+alt idle packet (APID = 0x7FF)
+  PR -> PR : discard idle packet,\nincrement idle-packet counter
+else mission telemetry packet
+  PR --> PE : dispatched to\ndecommutation pipeline by APID
+end
+deactivate PR
+deactivate PE
+deactivate FP
+deactivate UDP
+@enduml

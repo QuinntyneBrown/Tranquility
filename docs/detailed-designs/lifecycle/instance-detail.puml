@@ -1,0 +1,30 @@
+@startuml instance-detail
+' Requirements: L1-LIF-001, L2-LIF-001
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Instance discovery - retrieve single instance detail (with not-found rejection)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "GetInstanceQueryHandler" as QH
+participant "Instance Registry" as REG
+
+OP -> API ++ : GET /api/instances/{instance}
+API -> QH ++ : GetInstanceQuery(instanceName)
+QH -> REG ++ : TryGetInstance(instanceName)
+
+alt instance is configured
+  REG --> QH : InstanceDescriptor (name, state,\nmissionDatabase, missionTime,\ncapabilities, labels)
+  QH -> QH : map to documented InstanceInfo structure
+  QH --> API : InstanceInfo
+  API --> OP : 200 OK { name, state, missionDatabase, ... }
+  note right of OP
+    AC (L2-LIF-001): state and metadata
+    returned in documented structure.
+  end note
+else instance unknown
+  REG --> QH -- : not found
+  QH --> API -- : InstanceNotFoundError
+  API --> OP -- : 404 Not Found { type: "NotFoundException",\nmsg: "no such instance" }
+end
+@enduml

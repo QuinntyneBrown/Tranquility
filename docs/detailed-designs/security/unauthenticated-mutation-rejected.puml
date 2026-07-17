@@ -1,0 +1,43 @@
+@startuml unauthenticated-mutation-rejected
+' Requirements: L1-SEC-001, L2-SEC-002, L2-SEC-004
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title Unauthenticated State-Changing Request Rejected
+autonumber
+
+actor "Client" as CL
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "CQRS Dispatcher" as DISP
+participant "Audit Logger" as AUD
+database "Audit Log" as ADB
+
+CL -> API : POST /api/links/{instance}/{link}:enable\n(state-changing operation, no Authorization header)
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW -> MW : inspect Authorization header / session cookie
+
+alt no credentials, or invalid/expired token
+  note right of MW
+    L2-SEC-002: GIVEN an unauthenticated caller
+    WHEN a state-changing API operation is requested
+    THEN the operation is rejected.
+  end note
+  MW -> AUD : Record(event=auth-reject, actor=anonymous,\naction=link-enable, timestamp, outcome=rejected)
+  activate AUD
+  AUD -> ADB : append immutable entry
+  AUD --> MW : recorded
+  deactivate AUD
+  MW --> API : unauthenticated
+  API --> CL : 401 Unauthorized (WWW-Authenticate: Bearer)
+else valid bearer token presented
+  MW --> API : principal established
+  API -> DISP : dispatch state-changing operation
+  activate DISP
+  DISP --> API : result (privilege check applied downstream, L2-SEC-003)
+  deactivate DISP
+  API --> CL : 2xx response
+end
+deactivate MW
+deactivate API
+@enduml

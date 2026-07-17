@@ -1,0 +1,32 @@
+@startuml list-instances-nominal
+' Requirements: L1-API-001, L2-API-001, L2-API-005
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title List Instances - GET /api/instances (nominal)
+autonumber
+
+actor "Operator Client" as Client
+participant "HTTP API" as Http
+participant "ListInstancesQueryHandler" as Handler
+participant "Instance Registry" as Registry
+participant "Wire Serializer" as Ser
+
+Client -> Http ++ : GET /api/instances\nAccept: application/json
+note right of Http
+  GIVEN a running Tranquility API
+  WHEN a client calls GET /api/instances
+  THEN the response includes an "instances"
+  collection with documented instance fields
+end note
+Http -> Handler ++ : ListInstancesQuery
+Handler -> Registry ++ : GetInstances()
+Registry --> Handler -- : InstanceInfo[] (name, state,\nmissionTime, processors[])
+Handler --> Http -- : ListInstancesResponse
+Http -> Ser ++ : Serialize(response)
+note right of Ser
+  All time fields (e.g. missionTime)
+  serialized as UTC ISO 8601 / RFC 3339
+  per L2-API-005
+end note
+Ser --> Http -- : JSON body\n{ "instances": [ ... ] }
+Http --> Client -- : 200 OK\n{ "instances": [ { "name": "...",\n"state": "RUNNING", "missionTime":\n"2026-07-17T12:00:00.000Z", ... } ] }
+@enduml

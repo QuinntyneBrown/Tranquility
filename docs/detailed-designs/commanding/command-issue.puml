@@ -1,0 +1,55 @@
+@startuml command-issue
+' Requirements: L1-CMD-001, L2-CMD-001
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Command issue via POST /api/processors/{instance}/{processor}/commands/{name}
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "IssueCommandHandler" as ICH
+participant "Processor Registry" as REG
+participant "MDB Model" as MDB
+participant "Command Encoder" as ENC
+queue "Command Queue" as CQ
+database "Command History Store" as HIST
+
+OP -> API ++ : POST /api/processors/{instance}/{processor}/commands/{name}\n{ assignments, comment, origin, sequenceNumber }
+API -> ICH ++ : IssueCommandRequest
+ICH -> REG ++ : Resolve(instance, processor)
+REG --> ICH -- : processor context
+
+alt instance or processor unknown
+    ICH --> API : NotFound
+    API --> OP : 404 Not Found
+else processor resolved
+    ICH -> MDB ++ : LookupCommandDefinition(name)
+    alt command not defined in MDB
+        MDB --> ICH : null
+        ICH --> API : NotFound
+        API --> OP : 404 Not Found (unknown command)
+    else definition found
+        MDB --> ICH -- : MetaCommand definition
+        ICH -> ICH : Validate argument assignments\nagainst MDB argument types/ranges
+        alt assignment validation fails
+            ICH --> API : ValidationError
+            API --> OP : 400 Bad Request (invalid arguments)
+        else assignments valid
+            ICH -> ENC ++ : EncodeCommand(definition, assignments)
+            ENC --> ICH -- : binary (CCSDS TC packet), hex
+            ICH -> ICH : Allocate command identifier\n(generationTime, origin, sequenceNumber)
+            ICH -> HIST ++ : PersistStage(id, "ISSUED", binary, user)
+            HIST --> ICH --
+            ICH -> CQ ++ : Enqueue(id, binary, significance)
+            CQ --> ICH -- : queue name, entry id
+            ICH --> API -- : IssueCommandResponse
+            API --> OP -- : 200 OK { id, generationTime, origin,\nsequenceNumber, binary, queue }
+            note right of OP
+                AC L2-CMD-001: GIVEN a valid command payload
+                WHEN posted to the command issue URI
+                THEN response includes command identifier
+                and generated binary fields.
+            end note
+        end
+    end
+end
+@enduml

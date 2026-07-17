@@ -1,0 +1,56 @@
+@startuml link-disable
+' Requirements: L1-LNK-001, L2-LNK-002
+' Source: docs/specs/data-links/L1.md, docs/specs/data-links/L2.md
+title Disable a link (POST /api/links/{instance}/{link}:disable)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Service" as AUTHZ
+participant "DisableLinkCommandHandler" as CH
+participant "Link Manager" as LM
+participant "UDP TM Link" as LINK
+database "Audit Log" as AUD
+
+OP -> API ++ : POST /api/links/{instance}/{link}:disable
+API -> AUTHZ ++ : CheckPrivilege(caller, ControlLinks)
+
+alt caller holds ControlLinks privilege
+    AUTHZ --> API -- : granted
+    API -> CH ++ : DisableLinkCommand(instance, link)
+    CH -> LM ++ : FindLink(instance, link)
+
+    alt link exists
+        LM --> CH -- : LinkHandle
+        CH -> LINK ++ : Disable()
+        LINK -> LINK : stop accepting/emitting frames
+        LINK --> CH -- : state = DISABLED
+        CH -> AUD ++ : Record(caller, "link.disable", instance, link)
+        AUD --> CH --
+        CH --> API -- : LinkInfo { disabled: true }
+        API --> OP : 200 OK { name, disabled: true, ... }
+        note right of API
+          AC L2-LNK-002: GIVEN an enabled link WHEN disable
+          operation is requested THEN link state changes to
+          disabled and is reflected in subsequent status queries.
+        end note
+
+        == Subsequent status query reflects new state ==
+        OP -> API ++ : GET /api/links/{instance}
+        API -> LM ++ : GetLinkDescriptors(instance)
+        LM --> API -- : LinkInfo[] (link.disabled = true)
+        API --> OP -- : 200 OK { links: [ ..., disabled: true, ... ] }
+    else link unknown
+        LM --> CH : NotFound
+        deactivate LM
+        CH --> API : LinkNotFoundError
+        deactivate CH
+        API --> OP : 404 Not Found { message: "unknown link" }
+    end
+else caller lacks privilege
+    AUTHZ --> API : denied
+    deactivate AUTHZ
+    API --> OP : 403 Forbidden { message: "ControlLinks privilege required" }
+    deactivate API
+end
+@enduml

@@ -1,0 +1,47 @@
+@startuml parse-failure-error-reporting
+' Requirements: L1-SPP-001, L2-SPP-004
+' Source: docs/specs/space-packet-processing-and-decommutation/L1.md, docs/specs/space-packet-processing-and-decommutation/L2.md
+title Packet Parse Failure - Explicit Processing Error (error flow)
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Data Link" as UDP
+participant "Packet Extractor" as PE
+participant "Primary Header Decoder" as PHD
+participant "Processing Error Reporter" as ERR
+queue "Event Stream" as EVQ
+database "Audit Log" as AUD
+database "Raw Packet Archive" as ARC
+participant "Subscription Manager" as SM
+participant "WebSocket API" as WS
+actor "Operator Client" as OP
+
+GS -> UDP ++ : datagram containing\nstructurally invalid packet
+UDP -> PE ++ : raw bytes
+PE -> PHD ++ : decode primary header
+alt version number != 0
+  PHD -> PHD : structural check fails
+  PHD --> PE : ParseFailure\n{ reason: "SPP_INVALID_VERSION",\n  observedVersion }
+else declared packet length inconsistent with buffer
+  PHD -> PHD : structural check fails
+  PHD --> PE : ParseFailure\n{ reason: "SPP_LENGTH_MISMATCH",\n  declaredLength, availableBytes }
+end
+deactivate PHD
+note over PE
+  L2-SPP-004 acceptance:
+  GIVEN a packet with invalid structural fields
+  WHEN parse is attempted
+  THEN a processing error is emitted and contains
+  a machine-readable reason.
+end note
+PE -> ARC : archive offending raw bytes\n(flag = parse-failed)
+PE -> ERR ++ : report(ParseFailure)
+ERR -> EVQ : publish ProcessingError event\n{ code, reason, apidIfKnown,\n  byteOffset, receiveTime }
+ERR -> AUD : append processing error record
+ERR --> PE -- : error recorded
+EVQ -> SM : deliver ProcessingError event
+SM -> WS : push processing-error frame\nto subscribed clients
+WS -> OP : processing error visible to operator
+deactivate PE
+deactivate UDP
+@enduml

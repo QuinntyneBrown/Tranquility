@@ -1,0 +1,45 @@
+@startuml scope-control-trace-review
+' Requirements: L1-QLT-002, L2-QLT-005
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title Scope control trace review (deferred capabilities stay out of baseline)
+autonumber
+
+actor "Requirements Reviewer" as REV
+participant "Traceability Checker" as TC
+database "Requirements Baseline\n(docs/specs)" as SPEC
+database "Verification Cross\nReference Matrix (VCRM)" as VCRM
+
+REV -> TC ++ : Run baseline requirement review\n(active baseline revision)
+TC -> SPEC ++ : Load all L1/L2 requirements
+SPEC --> TC -- : requirement set
+TC -> VCRM ++ : Load feature-to-requirement trace links
+VCRM --> TC -- : trace matrix
+
+note right of TC
+  L2-QLT-005 acceptance:
+  GIVEN baseline requirement review WHEN features
+  are traced THEN deferred capability areas have
+  no implementation requirements in this baseline.
+end note
+
+loop for each deferred capability area:\nSDLS, expanded PUS coverage, HA replication
+  TC -> TC : Search requirement text and trace links\nfor implementation requirements in the area
+end
+
+alt No implementation requirements found for deferred areas
+  TC --> REV : Scope conformant
+  REV -> VCRM ++ : Record inspection evidence\n(reviewer, date, revision id)
+  VCRM --> REV -- : evidence stored
+  REV -> REV : Baseline scope confirmed (L1-QLT-002)
+else Deferred capability traced to an implementation requirement
+  TC --> REV -- : Scope violation\n(requirement id, deferred area)
+  alt Formal scope revision approved
+    REV -> SPEC ++ : Rebaseline: admit capability via\napproved scope-change record
+    SPEC --> REV -- : new baseline revision
+  else No approved revision
+    REV -> SPEC ++ : Remove or re-park offending\nrequirement outside baseline
+    SPEC --> REV -- : baseline corrected
+  end
+end
+
+@enduml

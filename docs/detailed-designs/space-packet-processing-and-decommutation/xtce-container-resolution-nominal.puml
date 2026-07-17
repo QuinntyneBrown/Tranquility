@@ -1,0 +1,42 @@
+@startuml xtce-container-resolution-nominal
+' Requirements: L1-SPP-001, L2-SPP-002
+' Source: docs/specs/space-packet-processing-and-decommutation/L1.md, docs/specs/space-packet-processing-and-decommutation/L2.md
+title XTCE Container Resolution and Parameter Extraction (nominal)
+autonumber
+
+participant "Packet Router" as PR
+participant "Decommutation Engine" as DE
+participant "XTCE Container Resolver" as CR
+participant "Mission Database (MDB)" as MDB
+participant "Parameter Processor" as PP
+participant "Parameter Cache" as PC
+participant "Subscription Manager" as SM
+participant "WebSocket API" as WS
+actor "Operator Client" as OP
+
+PR -> DE ++ : decommutate(packet, primaryHeader)
+DE -> CR ++ : resolve root container for APID
+CR -> MDB ++ : lookup SequenceContainer whose\nRestrictionCriteria match APID
+MDB --> CR -- : root container definition
+loop container inheritance chain
+  CR -> CR : evaluate RestrictionCriteria\nagainst already-extracted entries
+  CR -> MDB ++ : fetch derived container entry list
+  MDB --> CR -- : ParameterEntry list\n(bit offsets, data encodings)
+end
+CR --> DE -- : resolved container chain + entry list
+DE -> PP ++ : extract raw values at entry bit offsets
+PP -> PP : apply data encodings,\ncalibrations, enumerations
+PP --> DE -- : ParameterValue set (raw + engineering)
+note over DE
+  L2-SPP-002 acceptance:
+  GIVEN a packet mapped in MDB
+  WHEN decommutation executes
+  THEN the expected container and
+  parameter set is produced.
+end note
+DE -> PC : publish delivery\n(container id, parameter values,\ngeneration + receive timestamps)
+PC -> SM : notify subscribed parameter updates
+SM -> WS : push parameter update frames
+WS -> OP : parameter values over WebSocket
+deactivate DE
+@enduml

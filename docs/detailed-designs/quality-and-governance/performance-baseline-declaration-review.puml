@@ -1,0 +1,36 @@
+@startuml performance-baseline-declaration-review
+' Requirements: L1-QLT-002, L2-QLT-004
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title Performance baseline declaration review (numeric targets inspection)
+autonumber
+
+actor "Baseline Reviewer" as REV
+participant "Baseline Review Checklist" as CHK
+database "Baseline Document Store\n(docs/specs, versioned)" as DOC
+
+REV -> CHK ++ : Start review of active baseline revision
+CHK -> DOC ++ : Fetch performance section of\nactive baseline revision
+DOC --> CHK -- : performance targets section
+
+note right of CHK
+  L2-QLT-004 acceptance:
+  GIVEN the active baseline revision WHEN the
+  performance section is reviewed THEN each
+  required metric has an explicit numeric target.
+end note
+
+loop for each required metric:\ningest rate, parameter update rate,\nend-to-end latency percentiles,\narchive write throughput
+  CHK -> CHK : Verify explicit numeric target\n(value + unit + percentile where applicable)
+end
+
+alt Every required metric has a numeric target
+  CHK --> REV : Inspection passed
+  REV -> DOC ++ : Record inspection evidence\n(reviewer, date, revision id)
+  DOC --> REV -- : evidence stored
+  REV -> REV : Baseline accepted as contractual\nperformance definition (L1-QLT-002)
+else A metric target is missing or non-numeric (e.g. "TBD")
+  CHK --> REV -- : Inspection failed\n(list of unquantified metrics)
+  REV -> REV : Reject baseline revision;\nraise action to quantify targets (TBD-013)\nbefore performance work is accepted
+end
+
+@enduml

@@ -1,0 +1,32 @@
+@startuml timestamp-utc-serialization
+' Requirements: L1-API-002, L2-API-005
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title Timestamp serialization - UTC ISO 8601 / RFC 3339 on every response
+autonumber
+
+actor "Operator Client" as Client
+participant "HTTP API" as Http
+participant "Route Handler" as Handler
+participant "Wire Serializer" as Ser
+participant "Rfc3339TimestampConverter" as Conv
+
+Client -> Http ++ : GET <any endpoint whose\nresponse contains time fields>
+Http -> Handler ++ : dispatch
+Handler --> Http -- : response DTO with\nDateTimeOffset fields\n(generationTime, missionTime, ...)
+Http -> Ser ++ : Serialize(response DTO)
+loop for each time-valued field
+  Ser -> Conv ++ : Write(DateTimeOffset value)
+  Conv -> Conv : normalize to UTC
+  Conv --> Ser -- : "2026-07-17T12:00:00.000Z"
+end
+note right of Conv
+  GIVEN any response containing time fields
+  WHEN the payload is serialized
+  THEN timestamp strings are
+  UTC ISO 8601 / RFC 3339 (L2-API-005);
+  applies uniformly to HTTP and
+  WebSocket JSON payloads (L1-API-002)
+end note
+Ser --> Http -- : JSON body with RFC 3339\nUTC timestamp strings
+Http --> Client -- : 200 OK
+@enduml

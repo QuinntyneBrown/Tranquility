@@ -1,0 +1,59 @@
+@startuml websocket-call-correlation
+' Requirements: L1-API-001, L1-API-002, L2-API-003
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title WebSocket message framing - call correlation, sequence tracking, cancel and state built-ins
+autonumber
+
+actor "Subscription Client" as Client
+participant "WebSocket API" as Ws
+participant "WebSocket Session Manager" as Sess
+participant "Subscription Manager" as Sub
+
+note over Client, Ws
+  Documented framing semantics (L1-API-002):
+  every client call carries an id; server replies and
+  data messages carry the correlated call number and a
+  per-session monotonically increasing seq
+end note
+
+Client -> Ws ++ : { "type": "parameters", "id": 7,\n"options": { ... } }
+Ws -> Sess ++ : NextSeq(session)
+Sess --> Ws -- : seq = k
+Ws -> Sub ++ : Subscribe(call = 7, options)
+Sub --> Ws -- : subscription active
+Ws --> Client : { "type": "reply", "call": 7, "seq": k }
+
+== Streaming with sequence tracking ==
+
+loop while subscription active
+  Sub -> Ws : parameter delivery
+  Ws -> Sess ++ : NextSeq(session)
+  Sess --> Ws -- : seq = k+n
+  Ws --> Client : { "type": "parameters",\n"call": 7, "seq": k+n, "data": { ... } }
+end
+
+== Built-in: state ==
+
+Client -> Ws : { "type": "state", "id": 8 }
+Ws -> Sess ++ : ListCalls(session)
+Sess --> Ws -- : [ { call: 7, type: "parameters" } ]
+Ws --> Client : { "type": "reply", "call": 8,\n"data": { "calls": [ { "call": 7, ... } ] } }
+
+== Built-in: cancel ==
+
+Client -> Ws : { "type": "cancel", "id": 9,\n"options": { "call": 7 } }
+
+alt call 7 exists
+  Ws -> Sub ++ : Unsubscribe(call = 7)
+  Sub --> Ws -- : cancelled, stream stops
+  Ws --> Client : { "type": "reply", "call": 9, "seq": m }
+else call number unknown
+  Ws --> Client : { "type": "reply", "call": 9,\n"exception": { "type": "NotFoundException",\n"msg": "call not found" } }
+  note right of Client
+    Error payloads on the WebSocket
+    reuse the documented exception
+    shape (L1-API-002)
+  end note
+end
+deactivate Ws
+@enduml

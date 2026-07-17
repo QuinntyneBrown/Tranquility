@@ -1,0 +1,44 @@
+@startuml transfer-pause
+' Requirements: L1-FDP-001, L2-FDP-002
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title Transfer Pause - POST /api/filetransfer/{instance}/{serviceName}/transfers/{id}:pause
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "PauseTransferHandler" as PTH
+participant "CFDP Engine" as ENG
+participant "CFDP Transaction" as TXN
+database "Transfer Archive" as ARC
+database "Audit Log" as AUD
+
+OP -> API ++ : POST .../transfers/{id}:pause
+API -> PTH ++ : PauseTransferCommand(instance, serviceName, transferId)
+PTH -> ENG ++ : Pause(transferId)
+
+alt transfer unknown
+    ENG --> PTH : TransferNotFound
+    PTH --> API : NotFound
+    API --> OP : 404 Not Found
+else transfer not in RUNNING state
+    ENG --> PTH : InvalidState(currentState)
+    PTH --> API : Conflict
+    API --> OP : 409 Conflict\n{message: "transfer is not running"}
+else transfer active
+    ENG -> TXN ++ : Suspend()
+    TXN -> TXN : stop PDU emission,\nfreeze inactivity timers
+    TXN --> ENG -- : state RUNNING -> PAUSED
+    ENG --> PTH -- : state=PAUSED
+    PTH -> ARC ++ : UpdateTransferRecord(transferId, PAUSED)
+    ARC --> PTH --
+    PTH -> AUD ++ : Append(caller, "transfer.pause", transferId)
+    AUD --> PTH --
+    PTH --> API -- : TransferInfo(state=PAUSED)
+    API --> OP -- : 200 OK {id, state: "PAUSED"}
+    note right of OP
+        L2-FDP-002 AC: GIVEN an active transfer
+        WHEN pause is invoked THEN transfer state
+        transitions reflect the requested operation.
+    end note
+end
+@enduml

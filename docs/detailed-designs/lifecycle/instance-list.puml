@@ -1,0 +1,25 @@
+@startuml instance-list
+' Requirements: L1-LIF-001, L2-LIF-001
+' Source: docs/specs/lifecycle/L1.md, docs/specs/lifecycle/L2.md
+title Instance discovery - list configured instances
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "ListInstancesQueryHandler" as QH
+participant "Instance Registry" as REG
+
+OP -> API ++ : GET /api/instances
+API -> QH ++ : ListInstancesQuery(filter?)
+QH -> REG ++ : GetAllInstances()
+REG --> QH -- : InstanceDescriptor[] (name, state,\nmissionDatabase, missionTime, labels)
+QH -> QH : map descriptors to documented\nInstanceInfo wire structure
+QH --> API -- : InstanceInfo[]
+API --> OP -- : 200 OK { "instances": [ {name, state, ...} ] }
+
+note over OP, REG
+  AC (L2-LIF-001): GIVEN at least one configured instance
+  WHEN instances methods are called
+  THEN state and metadata are returned in documented structure.
+end note
+@enduml

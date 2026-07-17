@@ -1,0 +1,63 @@
+@startuml mdb-runtime-application
+' Requirements: L1-MDB-001
+' Source: docs/specs/mission-database/L1.md, docs/specs/mission-database/L2.md
+title Active MDB Applied to Runtime Telemetry and Command Interpretation
+autonumber
+
+actor "Ground Station" as GS
+actor "Operator" as OP
+participant "UDP Data Link" as LINK
+participant "CCSDS Packet Parser" as PKT
+participant "Telemetry Processor" as TMPROC
+participant "Decommutation Engine" as DECOM
+participant "Instance Registry" as REG
+participant "MDB Model" as MODEL
+participant "HTTP API" as API
+participant "IssueCommandHandler" as CMDH
+participant "Command Encoder" as ENC
+
+== Telemetry interpretation using active MDB ==
+GS -> LINK ++ : TM transfer frames (UDP)
+LINK -> PKT ++ : Frame payload
+PKT -> PKT : Extract CCSDS space packets\n(APID, sequence count)
+PKT -> TMPROC ++ : SpacePacket(apid, payload)
+TMPROC -> REG ++ : GetActiveModel(instance)
+REG --> TMPROC -- : MdbModel reference
+TMPROC -> MODEL ++ : MatchContainer(apid,\nrestriction criteria)
+MODEL --> TMPROC -- : SequenceContainer definition
+TMPROC -> DECOM ++ : Decommutate(payload,\ncontainerDefinition)
+
+loop for each ParameterEntry in container
+    DECOM -> MODEL : GetParameterType(entryRef)
+    MODEL --> DECOM : encoding, calibration
+    DECOM -> DECOM : Extract raw value,\napply calibrator
+end
+
+DECOM --> TMPROC -- : ParameterValue set
+TMPROC --> PKT -- : processed
+deactivate PKT
+deactivate LINK
+note right of DECOM
+  L1-MDB-001: telemetry interpretation is
+  driven entirely by loaded XTCE definitions,
+  not compiled mission logic
+end note
+
+== Command interpretation using active MDB ==
+OP -> API ++ : POST /api/instances/{instance}\n/commands {qualifiedName, args}
+API -> CMDH ++ : IssueCommand(qualifiedName, args)
+CMDH -> REG ++ : GetActiveModel(instance)
+REG --> CMDH -- : MdbModel reference
+CMDH -> MODEL ++ : GetCommandDefinition(qualifiedName)
+MODEL --> CMDH -- : MetaCommand(argument types,\nencodings, container)
+CMDH -> ENC ++ : Encode(metaCommand, args)
+ENC -> ENC : Validate argument ranges,\nbuild command packet per\nXTCE CommandContainer
+ENC --> CMDH -- : Encoded command packet
+CMDH --> API -- : CommandAccepted(binary preview)
+API --> OP -- : 200 OK {commandId, binary}
+note right of ENC
+  L1-MDB-001: command interpretation and
+  encoding are derived from the same active
+  XTCE mission database
+end note
+@enduml

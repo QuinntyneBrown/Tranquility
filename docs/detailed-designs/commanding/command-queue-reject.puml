@@ -1,0 +1,41 @@
+@startuml command-queue-reject
+' Requirements: L1-CMD-001, L2-CMD-002, L2-CMD-005
+' Source: docs/specs/commanding/L1.md, docs/specs/commanding/L2.md
+title Command queue entry reject (discard queued command)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "RejectQueueEntryHandler" as RQH
+participant "Queue Manager" as QM
+queue "Command Queue" as CQ
+participant "Subscription Manager" as SUB
+database "Command History Store" as HIST
+
+OP -> API ++ : POST /api/processors/{instance}/{processor}\n/queues/{queue}/entries/{entry}:reject
+API -> RQH ++ : RejectQueueEntryCommand(queue, entry, user)
+RQH -> QM ++ : Reject(queue, entry)
+QM -> CQ ++ : Remove(entry)
+
+alt entry not found in queue
+    CQ --> QM : miss
+    QM --> RQH : EntryNotFound
+    RQH --> API : NotFound
+    API --> OP : 404 Not Found
+else entry present
+    CQ --> QM -- : entry { id, commandName }
+    QM -> QM : Increment nbRejectedCommands
+    QM --> RQH -- : rejected entry
+    RQH -> HIST ++ : PersistStage(id, "REJECTED", user, time)
+    HIST --> RQH --
+    RQH -> SUB ++ : Publish queue-event\n(entry rejected)
+    SUB --> RQH -- : delivered to WebSocket subscribers
+    RQH --> API -- : updated queue contents
+    API --> OP -- : 200 OK { entry removed,\nremaining entries }
+    note right of OP
+        AC L2-CMD-002: reject actions
+        update queue contents; the command
+        is never dispatched.
+    end note
+end
+@enduml

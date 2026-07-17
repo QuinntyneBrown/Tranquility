@@ -1,0 +1,44 @@
+@startuml issue-command-rejection
+' Requirements: L1-API-002, L2-API-002, L2-API-004
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title Issue Command - rejection and error paths
+autonumber
+
+actor "Operator Client" as Client
+participant "HTTP API" as Http
+participant "Exception Envelope Middleware" as ExMw
+participant "IssueCommandHandler" as Handler
+participant "Processor Registry" as ProcReg
+participant "MDB Command Resolver" as Mdb
+participant "Command Assembler" as Asm
+
+Client -> Http ++ : POST /api/processors/{instance}/{processor}/commands/{name}\n{ "args": { ... } }
+Http -> ExMw ++ : invoke pipeline
+ExMw -> Handler ++ : IssueCommandRequest
+
+alt unknown instance or processor
+  Handler -> ProcReg ++ : ResolveProcessor(instance, processor)
+  ProcReg --> Handler -- : not found
+  Handler --> ExMw : NotFoundException("processor not found")
+  ExMw --> Http : 404 Not Found\n{ "exception": { "type": "NotFoundException",\n"msg": "processor not found" } }
+else unknown command name
+  Handler -> Mdb ++ : ResolveCommand(name)
+  Mdb --> Handler -- : not found
+  Handler --> ExMw : NotFoundException("command not found in MDB")
+  ExMw --> Http : 404 Not Found\n{ "exception": { "type": "NotFoundException",\n"msg": "command not found in MDB" } }
+else invalid or missing argument
+  Handler -> Asm ++ : BuildCommand(MetaCommand, args)
+  Asm --> Handler -- : ArgumentValidationError
+  Handler --> ExMw -- : BadRequestException("invalid argument value")
+  ExMw --> Http -- : 400 Bad Request\n{ "exception": { "type": "BadRequestException",\n"msg": "invalid argument value" } }
+end
+
+Http --> Client -- : non-2xx response with\ndocumented exception envelope
+note right of Client
+  GIVEN an invalid API request
+  WHEN Tranquility returns an error
+  THEN the body contains
+  exception.type and exception.msg
+  (L2-API-004, wire semantics per L1-API-002)
+end note
+@enduml

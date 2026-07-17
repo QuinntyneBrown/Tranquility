@@ -1,0 +1,45 @@
+@startuml license-audit-violation
+' Requirements: L1-QLT-001, L2-QLT-003
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title CI dependency license audit - policy violation fails the build
+autonumber
+
+actor "Developer" as DEV
+actor "CI Pipeline" as CI
+participant "License Audit Step" as LAS
+participant "Dependency Graph Resolver" as DGR
+participant "License Policy Engine" as LPE
+database "License Policy\n(allowlist / denylist)" as POL
+database "Audit Report Store\n(build artifacts)" as ARS
+
+DEV -> CI ++ : Push commit introducing new dependency
+CI -> LAS ++ : Run license-audit stage
+
+LAS -> DGR ++ : ResolveDependencyGraph(solution lockfiles)
+DGR --> LAS -- : dependency graph with license metadata\n(includes package with GPL-3.0 license)
+
+LAS -> LPE ++ : Evaluate(graph)
+LPE -> POL ++ : Load Apache-2.0 compatibility policy
+POL --> LPE -- : allowed / disallowed license sets
+
+loop for each package in dependency graph
+  LPE -> LPE : Classify license against policy
+end
+
+note right of LPE
+  L2-QLT-003 acceptance:
+  GIVEN a dependency graph containing a
+  disallowed license WHEN CI license audit runs
+  THEN pipeline status is failed.
+end note
+
+LPE --> LAS -- : Verdict: violation\n(package X, license GPL-3.0, rule=denylist)
+
+LAS -> ARS ++ : Persist violation report with\noffending package coordinates
+ARS --> LAS -- : report reference
+
+LAS --> CI -- : Stage FAILED (exit code nonzero)
+CI -> CI : Mark pipeline status = failed;\nblock merge / release promotion
+CI --> DEV -- : Pipeline failed: disallowed license;\nremove or replace dependency, or amend policy\nvia governance change process
+
+@enduml

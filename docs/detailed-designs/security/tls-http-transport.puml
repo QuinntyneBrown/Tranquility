@@ -1,0 +1,39 @@
+@startuml tls-http-transport
+' Requirements: L1-SEC-002, L2-SEC-005
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title TLS-Protected HTTP API Transport (production deployment)
+autonumber
+
+actor "Client" as CL
+participant "Kestrel TLS Endpoint" as TLS
+participant "HTTP API" as API
+
+note over CL, API
+  L2-SEC-005: GIVEN a production deployment
+  WHEN clients connect to API endpoints
+  THEN transport is established over TLS.
+end note
+
+== TLS handshake ==
+CL -> TLS : ClientHello (TLS 1.2+ offered)
+activate TLS
+TLS --> CL : ServerHello, server certificate, key share
+CL -> CL : verify server certificate chain
+CL -> TLS : key exchange, Finished
+TLS --> CL : Finished (encrypted session established)
+deactivate TLS
+
+== HTTPS request over encrypted channel ==
+CL -> API : GET /api/instances (over established TLS session)
+activate API
+API --> CL : 200 OK (response encrypted in transit)
+deactivate API
+
+== Cleartext attempt (production) ==
+opt client attempts plain http://
+  CL -> TLS : cleartext HTTP request
+  activate TLS
+  TLS --> CL : refused or 307 redirect to https (HSTS enforced)
+  deactivate TLS
+end
+@enduml

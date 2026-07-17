@@ -1,0 +1,57 @@
+@startuml aos-frame-ingest
+' Requirements: L1-SDL-001, L2-SDL-002
+' Source: docs/specs/space-data-link-protocol/L1.md, docs/specs/space-data-link-protocol/L2.md
+title AOS Transfer Frame Ingestion (CCSDS 732.0-B mission profile) - Nominal
+autonumber
+
+actor "Ground Station" as GS
+participant "UDP Frame Link" as UDP
+participant "Data Link Manager" as DLM
+participant "Mission Profile Registry" as MPR
+participant "AOS Frame Decoder" as AOSD
+participant "Virtual Channel Demux" as VCD
+participant "Packet Extractor" as PE
+participant "Telemetry Processor" as TP
+database "Frame Archive" as FA
+
+== Link initialization ==
+DLM -> MPR : ResolveProfile(linkId)
+activate MPR
+MPR --> DLM : AosMissionProfile { frameLength, scid, fhecPresent, insertZoneLength, fecfPresent }
+deactivate MPR
+
+== Frame reception and acceptance ==
+loop for each downlinked AOS transfer frame
+    GS -> UDP : UDP datagram (AOS transfer frame octets)
+    activate UDP
+    UDP -> DLM : OnFrameReceived(rawFrame, linkId, receiveTime)
+    deactivate UDP
+    activate DLM
+    DLM -> AOSD : Decode(rawFrame, aosMissionProfile)
+    activate AOSD
+    AOSD -> AOSD : Parse primary header (version, SCID, VCID, VC frame count, signaling field)
+    AOSD -> AOSD : Verify FHEC (if configured), skip insert zone, check FECF against profile
+    alt frame conforms to selected mission profile
+        AOSD --> DLM : AosTransferFrame
+        DLM -> FA : Append(rawFrame, linkId, receiveTime)
+        DLM -> VCD : Route(aosTransferFrame) by VCID
+        activate VCD
+        VCD -> PE : ExtractPackets(mPduDataZone, firstHeaderPointer)
+        activate PE
+        PE --> VCD : SpacePacket[]
+        deactivate PE
+        VCD -> TP : Deliver(spacePackets)
+        deactivate VCD
+        note right of TP
+          AC L2-SDL-002: GIVEN AOS frames compliant with
+          the mission profile WHEN ingested THEN frames are
+          accepted for downstream packet extraction.
+        end note
+    else profile violation detected
+        AOSD --> DLM : FrameValidationError(reason, frameContext)
+        ref over DLM, AOSD : Diagnostic path: see frame-validation-diagnostic.puml (L1-SDL-002, L2-SDL-005)
+    end
+    deactivate AOSD
+    deactivate DLM
+end
+@enduml

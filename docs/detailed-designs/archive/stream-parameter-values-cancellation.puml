@@ -1,0 +1,44 @@
+@startuml stream-parameter-values-cancellation
+' Requirements: L2-ARC-002
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Parameter replay stream - rejection and client cancellation
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "StreamParameterValues Handler" as Handler
+database "Parameter Archive Store" as Store
+
+Client -> HTTP : POST /api/archive/{instance}:streamParameterValues\n{ ids[], start, stop }
+activate HTTP
+
+alt invalid request body (empty ids, missing or inverted start/stop)
+  HTTP -> HTTP : validate request body
+  HTTP --> Client : 400 Bad Request { validation errors }\n(no stream is opened)
+else client disconnects mid-stream
+  HTTP -> Handler : StreamParameterValuesQuery(instance, ids, start, stop)
+  activate Handler
+  Handler -> Store : openCursor(pids, start, stop)
+  activate Store
+  HTTP --> Client : 200 OK, chunked stream opened
+  loop streaming batches
+    Handler -> Store : nextBatch()
+    Store --> Handler : batch of parameter values
+    Handler --> HTTP : emit batch
+    HTTP --> Client : chunk { parameter data }
+  end
+  Client -x HTTP : TCP connection closed by client
+  HTTP -> Handler : signal cancellation token
+  Handler -> Store : close cursor, release read resources
+  deactivate Store
+  Handler --> HTTP : stream aborted
+  deactivate Handler
+end
+deactivate HTTP
+
+note right of Handler
+  Detailed-design guardrails for L2-ARC-002: a chunked
+  server stream must terminate cleanly on client
+  disconnect so archive cursors and buffers are not
+  leaked across long replay intervals.
+end note
+@enduml

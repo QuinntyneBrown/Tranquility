@@ -1,0 +1,58 @@
+@startuml decomm-core-determinism-verification
+' Requirements: L1-QLT-001, L2-QLT-002
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title Deterministic decommutation core boundary verification
+autonumber
+
+actor "CI Pipeline" as CI
+participant "Test Runner" as TR
+participant "Determinism Test Suite" as SUITE
+participant "Isolation Sandbox\n(no network, no filesystem)" as SBX
+participant "Decommutation Core" as CORE
+participant "Boundary Analyzer" as BA
+
+CI -> TR ++ : Run determinism verification stage
+
+== Static boundary analysis ==
+
+TR -> BA ++ : AnalyzeCoreBoundary(Tranquility.Core assembly)
+BA -> BA : Scan assembly references for\nI/O, network, filesystem, clock dependencies
+alt Core boundary independent of runtime I/O
+  BA --> TR : BoundaryClean (no I/O references)
+else I/O dependency detected in core
+  BA --> TR -- : BoundaryViolation(dependency list)
+  TR --> CI : Stage failed (core boundary breached, L2-QLT-002)
+end
+
+== Reproducibility execution ==
+
+TR -> SUITE ++ : Execute(decommutation test inputs)
+SUITE -> SBX ++ : Host core in isolated sandbox
+
+note over SBX, CORE
+  L2-QLT-002 acceptance:
+  GIVEN decommutation test inputs WHEN executed in isolation
+  THEN outputs are reproducible without network
+  or filesystem dependencies.
+end note
+
+loop N repeated runs with identical frame/packet inputs
+  SBX -> CORE ++ : Decommutate(frames, MDB snapshot)
+  CORE -> CORE : Parse frames, extract packets,\nextract and calibrate parameters (pure functions)
+  CORE --> SBX -- : parameter set + output hash
+end
+
+SBX --> SUITE -- : output hashes[1..N]
+SUITE -> SUITE : Compare hashes across runs
+
+alt All output hashes identical
+  SUITE --> TR : Reproducible (deterministic core confirmed)
+  TR --> CI : Stage passed (evidence attached)
+else Hash divergence between runs
+  SUITE --> TR -- : NonDeterministic(diff report)
+  TR --> CI -- : Stage failed; hidden state or\nenvironment dependency must be removed
+end
+
+CI --> CI : Record analysis evidence for L1-QLT-001
+
+@enduml

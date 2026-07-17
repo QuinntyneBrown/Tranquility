@@ -1,0 +1,41 @@
+@startuml xtce-load-unsupported-construct
+' Requirements: L2-MDB-004, L1-MDB-001
+' Source: docs/specs/mission-database/L1.md, docs/specs/mission-database/L2.md
+title XTCE Load: Unsupported-Construct Diagnostics
+autonumber
+
+actor "Operator" as OP
+participant "HTTP API" as API
+participant "LoadMissionDatabaseHandler" as CMD
+participant "XTCE Loader" as LOADER
+database "XTCE File Store" as FS
+participant "Support Matrix" as SM
+participant "Audit Log" as AUDIT
+
+OP -> API ++ : POST /api/mdb/{instance}/load\n{xtceRef}
+API -> CMD ++ : LoadMissionDatabaseCommand(instance, xtceRef)
+CMD -> LOADER ++ : Load(xtceRef)
+LOADER -> FS ++ : Read XTCE document
+FS --> LOADER -- : XML content
+
+loop for each XTCE element encountered during parse
+    LOADER -> SM ++ : IsSupported(elementKind)
+    SM --> LOADER -- : supported / unsupported
+    alt Construct is in approved support matrix
+        LOADER -> LOADER : Map element into model
+    else Construct outside approved support
+        LOADER -> LOADER : Emit UnsupportedFeatureDiagnostic\n{construct, xtceElement,\nlocation (line, xpath)}
+        note right of LOADER
+          L2-MDB-004: GIVEN an XTCE construct outside
+          approved support WHEN load is requested
+          THEN response identifies the unsupported
+          construct and its location
+        end note
+    end
+end
+
+LOADER --> CMD -- : LoadFailed(diagnostics[])
+CMD -> AUDIT : Record(mdb-load-unsupported,\ninstance, diagnosticCount)
+CMD --> API -- : UnsupportedFeatureFailure(diagnostics)
+API --> OP -- : 422 Unprocessable Entity\n{diagnostics: [{construct,\nlocation}, ...]}
+@enduml

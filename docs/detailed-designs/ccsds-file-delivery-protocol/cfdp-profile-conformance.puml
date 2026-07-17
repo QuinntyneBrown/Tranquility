@@ -1,0 +1,38 @@
+@startuml cfdp-profile-conformance
+' Requirements: L1-FDP-001, L2-FDP-004
+' Source: docs/specs/ccsds-file-delivery-protocol/L1.md, docs/specs/ccsds-file-delivery-protocol/L2.md
+title Baseline CFDP Profile Declaration and Conformance Inspection
+autonumber
+
+actor "CI Pipeline" as CI
+participant "Conformance Test Suite" as CTS
+participant "Profile Declaration\n(docs/specs, TBD-008)" as DECL
+participant "CFDP Engine" as ENG
+
+== Profile load ==
+CI -> CTS ++ : run cfdp-conformance job
+CTS -> DECL ++ : read declared baseline profile\n(transmission mode, checksum type,\nsegment size, fault handlers, timers)
+DECL --> CTS -- : single declared profile (CCSDS 727.0-B subset)
+
+== Per-test-case inspection ==
+loop for each baseline conformance test case
+    CTS -> CTS : verify test case references\nthe declared CFDP profile
+    alt test case references declared profile
+        CTS -> ENG ++ : execute test case against engine\nconfigured with declared profile
+        ENG --> CTS -- : observed PDU behaviour
+        CTS -> CTS : assert behaviour matches profile
+    else test case missing or divergent profile reference
+        CTS --> CI : FAIL: test case does not reference\nthe single declared CFDP profile
+        note right of CI
+            L2-FDP-004 AC: GIVEN baseline conformance
+            tests WHEN the profile declaration is
+            reviewed THEN each test case references
+            a single declared CFDP profile.
+        end note
+    end
+end
+
+== Verdict ==
+CTS --> CI -- : conformance report\n(profile id, pass/fail per case)
+CI -> CI : gate merge on conformance result
+@enduml

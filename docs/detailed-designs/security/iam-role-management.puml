@@ -1,0 +1,79 @@
+@startuml iam-role-management
+' Requirements: L1-SEC-001, L2-SEC-001
+' Source: docs/specs/security/L1.md, docs/specs/security/L2.md
+title IAM Role Resource Operations (list, create, update)
+autonumber
+
+actor "Administrator" as ADM
+participant "HTTP API" as API
+participant "Auth Middleware" as MW
+participant "IAM Handler" as IAM
+database "IAM Store" as DB
+
+note over ADM, DB
+  L2-SEC-001: GIVEN an authenticated administrator
+  WHEN IAM list/create/update methods are called
+  THEN responses follow documented IAM resource structures.
+  Roles aggregate named privileges (e.g. Command, ControlLinks).
+end note
+
+== List roles ==
+ADM -> API : GET /api/iam/roles
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : ListRolesQuery
+activate IAM
+IAM -> DB : select role records
+activate DB
+DB --> IAM : role rows
+deactivate DB
+IAM --> API : ListRolesResponse (documented role resource structure)
+deactivate IAM
+API --> ADM : 200 OK { roles: [ { name, description, privileges } ] }
+deactivate API
+
+== Create role ==
+ADM -> API : POST /api/iam/roles { name, description, privileges }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : CreateRoleCommand
+activate IAM
+IAM -> IAM : validate name uniqueness and privilege identifiers
+IAM -> DB : insert role record
+activate DB
+DB --> IAM : stored
+deactivate DB
+IAM --> API : RoleResource
+deactivate IAM
+API --> ADM : 201 Created { role }
+deactivate API
+
+== Update role (privilege set change) ==
+ADM -> API : PATCH /api/iam/roles/{name} { privileges }
+activate API
+API -> MW : Authenticate(request)
+activate MW
+MW --> API : principal (administrator)
+deactivate MW
+API -> IAM : UpdateRoleCommand
+activate IAM
+IAM -> DB : load role record
+activate DB
+DB --> IAM : role row
+deactivate DB
+IAM -> IAM : validate privilege identifiers
+IAM -> DB : persist updated privilege set
+activate DB
+DB --> IAM : stored
+deactivate DB
+IAM --> API : RoleResource (updated)
+deactivate IAM
+API --> ADM : 200 OK { role }
+deactivate API
+@enduml

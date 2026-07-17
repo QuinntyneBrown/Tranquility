@@ -1,0 +1,38 @@
+@startuml websocket-protobuf-subprotocol
+' Requirements: L1-API-001, L2-API-003
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title WebSocket handshake - protobuf subprotocol negotiation (nominal)
+autonumber
+
+actor "Subscription Client" as Client
+participant "WebSocket API" as Ws
+participant "Subprotocol Negotiator" as Neg
+participant "WebSocket Session Manager" as Sess
+participant "Subscription Manager" as Sub
+
+Client -> Ws ++ : GET /api/websocket\nUpgrade: websocket\nSec-WebSocket-Protocol: protobuf
+note right of Ws
+  GIVEN a WebSocket upgrade request
+  WHEN the client requests
+  Sec-WebSocket-Protocol: protobuf
+  THEN the session is accepted with
+  protobuf message encoding
+end note
+Ws -> Neg ++ : Negotiate(["protobuf"])
+Neg --> Ws -- : selected = protobuf\nencoder = ProtobufMessageEncoder
+Ws -> Sess ++ : CreateSession(encoding = protobuf)
+Sess --> Ws -- : session (id, seq = 0)
+Ws --> Client : 101 Switching Protocols\nSec-WebSocket-Protocol: protobuf
+
+== Session established (binary protobuf framing) ==
+
+Client -> Ws : ClientMessage { type: "parameters",\nid: 1, options: ... } (binary frame)
+Ws -> Sub ++ : Subscribe(session, options)
+Sub --> Ws -- : subscription created
+Ws --> Client : ServerMessage { type: "reply",\ncall: 1, seq: 1 } (binary frame)
+loop while subscription active
+  Sub -> Ws : parameter delivery
+  Ws --> Client : ServerMessage { type: "parameters",\ncall: 1, seq: n } (binary frame)
+end
+deactivate Ws
+@enduml

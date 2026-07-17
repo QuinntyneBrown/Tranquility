@@ -1,0 +1,55 @@
+@startuml websocket-session-establish
+' Requirements: L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title WebSocket Session Establishment and Topic Subscribe (nominal + unknown topic)
+autonumber
+
+actor "Operator Client" as Client
+participant "HTTP API" as HTTP
+participant "WebSocket API" as WS
+participant "Session Manager" as SM
+participant "Topic Registry" as TR
+participant "Subscription Manager" as SubMgr
+
+== Connection upgrade ==
+
+Client -> HTTP ++ : GET /api/websocket\n(Upgrade: websocket)
+HTTP -> WS ++ : accept upgrade, hand off socket
+WS -> SM ++ : CreateSession(connectionId)
+SM --> WS -- : session (callCounter = 0)
+WS --> Client : 101 Switching Protocols
+deactivate HTTP
+
+== Topic subscribe ==
+
+Client -> WS : { type: "<topic>", id: 1, options: {...} }
+WS -> SM ++ : ResolveSession(connectionId)
+SM --> WS -- : session
+WS -> TR ++ : LookupTopic("<topic>")
+
+alt topic is registered
+  TR --> WS : topic handler
+  deactivate TR
+  WS -> SubMgr ++ : CreateSubscription(session, topic, options)
+  SubMgr -> SubMgr : assign call = ++session.callCounter
+  SubMgr --> WS -- : subscription (call = c)
+  WS --> Client : { type: "reply", seq: n, data: { replyTo: 1, call: c } }
+  note right of Client
+    Reply correlates the client request id
+    to the server-assigned call number
+    used by all later stream messages.
+  end note
+  loop while subscription active
+    SubMgr -> WS : Emit(call = c, payload)
+    WS --> Client : { type: "<topic>", call: c, seq: n+i, data: {...} }
+  end
+else topic is not registered
+  TR --> WS -- : not found
+  WS --> Client : { type: "reply", seq: n, data: { replyTo: 1,\n  exception: { code: 400, msg: "unknown topic" } } }
+  note right of Client
+    No subscription is created; the session
+    remains open for further calls.
+  end note
+end
+deactivate WS
+@enduml

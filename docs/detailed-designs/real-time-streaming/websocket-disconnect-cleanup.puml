@@ -1,0 +1,44 @@
+@startuml websocket-disconnect-cleanup
+' Requirements: L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title WebSocket Disconnect - Server-Side Subscription Cleanup
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Session Manager" as SM
+participant "Subscription Manager" as SubMgr
+participant "Instance Registry" as IR
+participant "Link Manager" as LM
+
+== Disconnect ==
+
+alt graceful close
+  Client -> WS ++ : WebSocket Close frame (1000)
+  WS --> Client : Close ack
+else abrupt disconnect
+  Client ->x WS : TCP connection lost
+  WS -> WS : receive loop faults /\nkeepalive ping times out
+end
+
+== Cleanup ==
+
+WS -> SM ++ : EndSession(connectionId)
+SM -> SubMgr ++ : CancelAllSubscriptions(session)
+loop each active subscription of the session
+  SubMgr -> IR : UnregisterStateListener(subscription)
+  SubMgr -> LM : UnregisterLinkListener(subscription)
+  SubMgr -> SubMgr : remove subscription entry
+end
+SubMgr --> SM -- : all calls released
+SM -> SM : discard session state\n(callCounter, seqCounter, buffers)
+SM --> WS -- : session ended
+deactivate WS
+
+note over SubMgr, SM
+  Cleanup guarantees no publisher keeps a
+  reference to a dead socket; a reconnecting
+  client starts a fresh session with new
+  call and seq counters (L1-RTS-001).
+end note
+@enduml

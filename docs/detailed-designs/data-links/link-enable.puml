@@ -1,0 +1,50 @@
+@startuml link-enable
+' Requirements: L1-LNK-001, L2-LNK-002
+' Source: docs/specs/data-links/L1.md, docs/specs/data-links/L2.md
+title Enable a link (POST /api/links/{instance}/{link}:enable)
+autonumber
+
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Service" as AUTHZ
+participant "EnableLinkCommandHandler" as CH
+participant "Link Manager" as LM
+participant "UDP TM Link" as LINK
+database "Audit Log" as AUD
+
+OP -> API ++ : POST /api/links/{instance}/{link}:enable
+API -> AUTHZ ++ : CheckPrivilege(caller, ControlLinks)
+
+alt caller holds ControlLinks privilege
+    AUTHZ --> API -- : granted
+    API -> CH ++ : EnableLinkCommand(instance, link)
+    CH -> LM ++ : FindLink(instance, link)
+
+    alt link exists
+        LM --> CH -- : LinkHandle
+        CH -> LINK ++ : Enable()
+        LINK -> LINK : resume frame ingest/uplink
+        LINK --> CH -- : state = ENABLED
+        note right of LINK
+          Enable is idempotent: enabling an
+          already-enabled link is a no-op that
+          still returns current status.
+        end note
+        CH -> AUD ++ : Record(caller, "link.enable", instance, link)
+        AUD --> CH --
+        CH --> API -- : LinkInfo { disabled: false }
+        API --> OP : 200 OK { name, disabled: false, ... }
+    else link unknown
+        LM --> CH : NotFound
+        deactivate LM
+        CH --> API : LinkNotFoundError
+        deactivate CH
+        API --> OP : 404 Not Found { message: "unknown link" }
+    end
+else caller lacks privilege
+    AUTHZ --> API : denied
+    deactivate AUTHZ
+    API --> OP : 403 Forbidden { message: "ControlLinks privilege required" }
+    deactivate API
+end
+@enduml

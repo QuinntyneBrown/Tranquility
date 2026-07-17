@@ -1,0 +1,62 @@
+@startuml performance-target-verification
+' Requirements: L1-QLT-002, L2-QLT-004
+' Source: docs/specs/quality-and-governance/L1.md, docs/specs/quality-and-governance/L2.md
+title Performance target verification benchmark with documented evidence
+autonumber
+
+actor "CI Pipeline\n(perf stage)" as CI
+participant "Benchmark Harness" as BH
+participant "Frame Ingest Endpoint\n(UDP/TCP link)" as ING
+participant "Processor Pipeline" as PP
+participant "WebSocket API" as WS
+database "Archive Store" as ARC
+database "Baseline Targets\n(active revision)" as TGT
+database "Verification Evidence\nArchive" as EVD
+
+CI -> BH ++ : Run performance verification suite
+BH -> TGT ++ : Load numeric targets\n(ingest rate, parameter update rate,\nlatency percentiles, archive write throughput)
+TGT --> BH -- : target set
+
+== Load generation and measurement ==
+
+par Ingest and processing under load
+  loop sustained frame replay at target rate
+    BH -> ING ++ : Inject CCSDS frames
+    ING -> PP ++ : Frames -> packets -> parameters
+    PP -> ARC : Write packets + parameter values
+    PP -> WS : Publish parameter updates
+    PP --> ING -- : processed
+    ING --> BH -- : ingest counters
+  end
+else Client-side latency probe
+  loop sampled parameter updates
+    WS --> BH : timestamped update\n(measure end-to-end latency)
+  end
+end
+
+BH -> ARC ++ : Query archive write throughput counters
+ARC --> BH -- : throughput measurements
+
+== Evaluation and evidence ==
+
+BH -> BH : Compute achieved ingest rate,\nparameter update rate, latency percentiles\n(p50/p95/p99), archive write throughput
+
+note right of BH
+  L1-QLT-002: performance is contractual and
+  testable; each measured value is compared
+  to the numeric target declared per L2-QLT-004.
+end note
+
+alt All measured values meet or exceed targets
+  BH -> EVD ++ : Persist signed verification report\n(targets vs measured, environment, revision)
+  EVD --> BH -- : evidence reference
+  BH --> CI : Perf stage passed with documented evidence
+else One or more targets missed
+  BH -> EVD ++ : Persist failure report\n(metric, target, measured, margin)
+  EVD --> BH -- : evidence reference
+  BH --> CI -- : Perf stage FAILED;\nregression must be fixed or baseline\nformally re-approved
+end
+
+CI -> CI : Gate release promotion on perf stage result
+
+@enduml

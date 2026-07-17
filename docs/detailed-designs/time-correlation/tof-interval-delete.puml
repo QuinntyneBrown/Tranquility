@@ -1,0 +1,55 @@
+@startuml tof-interval-delete
+' Requirements: L1-TIM-001, L2-TIM-003
+' Source: docs/specs/time-correlation/L1.md, docs/specs/time-correlation/L2.md
+title Time-of-Flight Interval Delete - POST /api/tco/{instance}/{serviceName}/tof:deleteIntervals
+autonumber
+actor "Operator/Client" as OP
+participant "HTTP API" as API
+participant "Authorization Filter" as AUTHZ
+participant "DeleteTofIntervals Command Handler" as CH
+participant "Instance Registry" as REG
+participant "Time Correlation Service" as TCO
+participant "Time-of-Flight Estimator" as TOF
+
+OP -> API ++ : POST /api/tco/{instance}/{serviceName}/tof:deleteIntervals\n{ertStart, ertStop}
+API -> AUTHZ ++ : Authorize(caller, ControlTimeCorrelation)
+AUTHZ --> API -- : decision
+alt caller lacks ControlTimeCorrelation privilege
+    API --> OP : 403 Forbidden {message}
+else caller authorized
+    API -> CH ++ : DeleteTofIntervalsCommand(instance, serviceName, range)
+    CH -> REG ++ : ResolveTcoService(instance, serviceName)
+    REG --> CH -- : service handle
+    CH -> TCO ++ : ValidateRange(ertStart, ertStop)
+    TCO --> CH -- : validation result
+    alt range invalid (ertStart >= ertStop, unparseable times)
+        CH --> API : ValidationError(reason)
+        API --> OP : 400 Bad Request {reason}
+    else valid deletion range
+        CH -> TCO ++ : DeleteIntervals(ertStart, ertStop)
+        TCO -> TOF ++ : RemoveOverlapping(ertStart, ertStop)
+        alt one or more intervals overlap range
+            TOF -> TOF : remove overlapping intervals from interval set
+            TOF --> TCO : removedCount > 0
+        else no interval overlaps range
+            TOF -> TOF : interval set unchanged
+            TOF --> TCO : removedCount = 0
+        end
+        deactivate TOF
+        TCO --> CH -- : removedCount
+        CH --> API : Ok {removedCount}
+        API --> OP : 200 OK {removedCount}
+    end
+    deactivate CH
+end
+deactivate API
+
+== Interval set change visible in service state ==
+OP -> API ++ : GET /api/tco/{instance}/{serviceName}/status
+API --> OP -- : 200 OK {state no longer contains deleted time-of-flight intervals}
+note right of OP
+    AC L2-TIM-003: GIVEN an interval delete request
+    WHEN method executes THEN interval set changes
+    are visible in time-correlation service state.
+end note
+@enduml

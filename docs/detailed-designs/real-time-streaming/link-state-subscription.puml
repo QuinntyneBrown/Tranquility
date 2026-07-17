@@ -1,0 +1,48 @@
+@startuml link-state-subscription
+' Requirements: L2-RTS-003, L1-RTS-001
+' Source: docs/specs/real-time-streaming/L1.md, docs/specs/real-time-streaming/L2.md
+title Link State Subscription - Push Updates Without Polling
+autonumber
+
+actor "Operator Client" as Client
+participant "WebSocket API" as WS
+participant "Subscription Manager" as SubMgr
+participant "Link Manager" as LM
+participant "UDP Data Link" as Link
+actor "Ground Station" as GS
+
+== Subscribe to links topic ==
+
+Client -> WS ++ : { type: "links", id: 1, options: { instance } }
+WS -> SubMgr ++ : CreateLinkSubscription(session, instance)
+SubMgr -> LM ++ : GetLinkInfo(instance)
+LM --> SubMgr -- : links [{ name, status, dataInCount, dataOutCount }]
+SubMgr -> LM : RegisterLinkListener(subscription)
+SubMgr --> WS -- : call = c, initial link set
+WS --> Client : { type: "reply", seq: n, data: { replyTo: 1, call: c } }
+WS --> Client : { type: "links", call: c, seq: n+1,\n  data: { links: [initial states] } }
+deactivate WS
+
+== Runtime link changes are pushed ==
+
+note over SubMgr, LM
+  Acceptance (L2-RTS-003): GIVEN active link
+  subscriptions WHEN runtime state changes THEN state
+  updates are emitted without polling.
+end note
+
+loop each link event
+  alt data flow updates counters
+    GS -> Link ++ : incoming frames
+    Link -> LM : ReportCounters(dataInCount += k)
+    deactivate Link
+  else link is disabled or fails
+    LM -> LM : status OK -> DISABLED / FAILED
+  end
+  LM -> SubMgr ++ : OnLinkChanged(linkEvent)
+  SubMgr -> WS ++ : Emit(call = c, linkEvent)
+  deactivate SubMgr
+  WS --> Client : { type: "links", call: c, seq: n+i,\n  data: { name, status, dataInCount, detailedStatus } }
+  deactivate WS
+end
+@enduml

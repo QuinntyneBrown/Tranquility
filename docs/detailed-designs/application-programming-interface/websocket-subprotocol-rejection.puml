@@ -1,0 +1,36 @@
+@startuml websocket-subprotocol-rejection
+' Requirements: L1-API-001, L2-API-003
+' Source: docs/specs/application-programming-interface/L1.md, docs/specs/application-programming-interface/L2.md
+title WebSocket handshake - unsupported or absent subprotocol (alternate)
+autonumber
+
+actor "Subscription Client" as Client
+participant "WebSocket API" as Ws
+participant "Subprotocol Negotiator" as Neg
+participant "WebSocket Session Manager" as Sess
+
+Client -> Ws ++ : GET /api/websocket\nUpgrade: websocket\nSec-WebSocket-Protocol: <offered list>
+
+Ws -> Neg ++ : Negotiate(offered list)
+
+alt client offers no subprotocol header
+  Neg --> Ws : default = json
+  Ws -> Sess ++ : CreateSession(encoding = json)
+  Sess --> Ws -- : session
+  Ws --> Client : 101 Switching Protocols\n(default JSON encoding)
+  note right of Client
+    Documented handshake semantics:
+    absent subprotocol falls back to
+    JSON message encoding (L2-API-003)
+  end note
+else client offers only unsupported subprotocols
+  Neg --> Ws -- : no supported subprotocol
+  Ws --> Client : 400 Bad Request\nhandshake refused, no\nsupported subprotocol
+  note right of Client
+    Wire-compatible rejection: upgrade
+    is not completed when neither json
+    nor protobuf can be selected
+  end note
+end
+deactivate Ws
+@enduml

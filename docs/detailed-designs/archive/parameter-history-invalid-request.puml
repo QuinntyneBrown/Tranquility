@@ -1,0 +1,51 @@
+@startuml parameter-history-invalid-request
+' Requirements: L2-ARC-001
+' Source: docs/specs/archive/L1.md, docs/specs/archive/L2.md
+title Parameter history retrieval - rejection paths
+autonumber
+actor "Operator/Client" as Client
+participant "HTTP API" as HTTP
+participant "GetParameterHistory Handler" as Handler
+participant "Instance Registry" as Registry
+participant "MDB Model" as MDB
+
+Client -> HTTP : GET /api/archive/{instance}/parameters/{name}\n?start=T0&stop=T1
+activate HTTP
+HTTP -> HTTP : validate query controls
+
+alt malformed time bounds (unparseable, or stop <= start)
+  HTTP --> Client : 400 Bad Request { invalid time interval }
+else unknown instance
+  HTTP -> Handler : GetParameterHistoryQuery(instance, ...)
+  activate Handler
+  Handler -> Registry : resolve(instance)
+  activate Registry
+  Registry --> Handler : instance not found
+  deactivate Registry
+  Handler --> HTTP : InstanceNotFound
+  deactivate Handler
+  HTTP --> Client : 404 Not Found { unknown instance }
+else unknown parameter name
+  HTTP -> Handler : GetParameterHistoryQuery(instance, name, ...)
+  activate Handler
+  Handler -> Registry : resolve(instance)
+  activate Registry
+  Registry --> Handler : instance context
+  deactivate Registry
+  Handler -> MDB : lookupParameter(name)
+  activate MDB
+  MDB --> Handler : no such parameter
+  deactivate MDB
+  Handler --> HTTP : ParameterNotFound
+  deactivate Handler
+  HTTP --> Client : 404 Not Found { unknown parameter }
+end
+deactivate HTTP
+
+note right of HTTP
+  Detailed-design guardrails for L2-ARC-001: the interval
+  bound in the AC implies the request must carry a valid
+  interval and address an existing instance/parameter
+  before archive reads are attempted.
+end note
+@enduml
