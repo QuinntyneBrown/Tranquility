@@ -102,7 +102,38 @@ public static class CdsTimeCodec
     /// </summary>
     public static void EncodeImplicit(CdsTime time, Span<byte> tField, int dayOctets, int subMillisecondOctets)
     {
-        throw new NotImplementedException();
+        if (dayOctets is not (2 or 3))
+        {
+            throw new ArgumentOutOfRangeException(nameof(dayOctets), "CDS day segment is 2 or 3 octets.");
+        }
+
+        if (subMillisecondOctets is not (0 or 2 or 4))
+        {
+            throw new ArgumentOutOfRangeException(nameof(subMillisecondOctets), "CDS submillisecond segment is 0, 2, or 4 octets.");
+        }
+
+        int required = dayOctets + 4 + subMillisecondOctets;
+        if (tField.Length < required)
+        {
+            throw new ArgumentException($"T-field of {tField.Length} octets cannot hold {required} octets.", nameof(tField));
+        }
+
+        if (dayOctets == 2 && time.Days > 0xFFFF)
+        {
+            throw new ArgumentOutOfRangeException(nameof(time), $"Day count {time.Days} does not fit 2 octets.");
+        }
+
+        for (int i = dayOctets - 1; i >= 0; i--)
+        {
+            tField[i] = (byte)(time.Days >> (8 * (dayOctets - 1 - i)));
+        }
+
+        BinaryPrimitives.WriteUInt32BigEndian(tField[dayOctets..], time.MillisecondsOfDay);
+
+        for (int i = 0; i < subMillisecondOctets; i++)
+        {
+            tField[dayOctets + 4 + i] = (byte)(time.SubMilliseconds >> (8 * (subMillisecondOctets - 1 - i)));
+        }
     }
 }
 

@@ -7,12 +7,18 @@ public sealed class TranquilityOptions
 
     public List<InstanceOptions> Instances { get; init; } = [];
 
+    /// <summary>Directory operator-supplied XTCE references resolve inside.</summary>
+    public string? MdbDirectory { get; init; }
+
     public SecurityOptions Security { get; init; } = new();
 }
 
 public sealed class InstanceOptions
 {
     public required string Name { get; init; }
+
+    /// <summary>XTCE document activated for this instance at boot.</summary>
+    public string? MdbPath { get; init; }
 }
 
 public sealed class SecurityOptions

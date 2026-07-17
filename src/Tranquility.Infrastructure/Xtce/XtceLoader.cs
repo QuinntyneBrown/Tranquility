@@ -1,21 +1,25 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Xml;
 using System.Xml.Linq;
-
 using Tranquility.Core.Alarms;
 using Tranquility.Core.Mdb;
 
 namespace Tranquility.Infrastructure.Xtce;
 
 /// <summary>
-/// Loads the supported XTCE subset into the Core mission database model.
-/// Implements: L2-MDB-001, L2-MDB-003 (validation errors are surfaced with element context).
+/// Loads the supported XTCE subset into the Core mission database model with
+/// exhaustive validation diagnostics.
+/// Implements: L2-MDB-001 (two-phase reference validation, every broken
+/// reference reported), L2-MDB-003 (AliasSet), L2-MDB-004 (explicit
+/// unsupported-construct diagnostics with document location).
 /// Source: OMG XTCE 1.3 (SpaceSystem, ParameterTypeSet, ParameterSet, ContainerSet).
 ///
-/// Supported subset: Integer/Float/Enumerated parameter types, Integer/Float data
-/// encodings, polynomial default calibrators, static alarm ranges, sequence
-/// containers with ParameterRefEntry, container inheritance with comparison
-/// restriction criteria. Namespace-tolerant (matches by local name) so XTCE 1.1/1.2/1.3
-/// documents load identically.
+/// Supported subset: Integer/Float/Enumerated parameter types, Integer/Float
+/// data encodings, polynomial default calibrators, static alarm ranges,
+/// sequence containers with ParameterRefEntry, container inheritance with
+/// comparison restriction criteria, parameter aliases. Namespace-tolerant
+/// (matches by local name) so XTCE 1.1/1.2/1.3 documents load identically.
 /// </summary>
 public sealed class XtceLoader
 {
@@ -31,30 +35,70 @@ public sealed class XtceLoader
         _open = open;
     }
 
+    /// <summary>Loads and throws on the first error (Core-level convenience).</summary>
     public MissionDatabase Load()
     {
-        using var stream = _open();
-        return Parse(XDocument.Load(stream, LoadOptions.SetLineInfo));
-    }
-
-    public static MissionDatabase Parse(XDocument document)
-    {
-        var rootElement = document.Root
-            ?? throw new XtceLoadException("Document has no root element.");
-        if (rootElement.Name.LocalName != "SpaceSystem")
+        var result = LoadWithDiagnostics();
+        if (!result.Success)
         {
-            throw new XtceLoadException($"Root element is '{rootElement.Name.LocalName}', expected 'SpaceSystem'.");
+            throw new XtceLoadException(string.Join("; ", result.Errors.Select(e => e.Message)));
         }
 
-        var context = new LoadContext();
+        return result.Database!;
+    }
+
+    /// <summary>Loads, collecting every diagnostic instead of failing fast.</summary>
+    public MdbLoadResult LoadWithDiagnostics()
+    {
+        byte[] bytes;
+        using (var stream = _open())
+        using (var buffer = new MemoryStream())
+        {
+            stream.CopyTo(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        var version = Convert.ToHexStringLower(SHA256.HashData(bytes))[..12];
+
+        XDocument document;
+        try
+        {
+            using var reader = new MemoryStream(bytes);
+            document = XDocument.Load(reader, LoadOptions.SetLineInfo);
+        }
+        catch (XmlException e)
+        {
+            return new MdbLoadResult(null,
+                [new XtceDiagnostic(XtceDiagnosticSeverity.Error, $"XML parse failure: {e.Message}", null, e.LineNumber)]);
+        }
+
+        return Parse(document, version);
+    }
+
+    public static MdbLoadResult Parse(XDocument document, string version = "0")
+    {
+        var diagnostics = new List<XtceDiagnostic>();
+        var rootElement = document.Root;
+        if (rootElement is null || rootElement.Name.LocalName != "SpaceSystem")
+        {
+            diagnostics.Add(Error(
+                $"Root element is '{rootElement?.Name.LocalName ?? "(none)"}', expected 'SpaceSystem'.",
+                rootElement?.Name.LocalName, rootElement));
+            return new MdbLoadResult(null, diagnostics);
+        }
+
+        var context = new LoadContext(diagnostics);
         var root = ParseSpaceSystem(rootElement, parent: null, context);
         context.ResolveContainers();
-        return new MissionDatabase(root);
+
+        return diagnostics.Any(d => d.Severity == XtceDiagnosticSeverity.Error)
+            ? new MdbLoadResult(null, diagnostics)
+            : new MdbLoadResult(new MissionDatabase(root, version), diagnostics);
     }
 
     private static SpaceSystem ParseSpaceSystem(XElement element, SpaceSystem? parent, LoadContext context)
     {
-        string name = RequiredAttribute(element, "name");
+        string name = element.Attribute("name")?.Value ?? "(unnamed)";
         var system = new SpaceSystem(name, parent);
 
         var tm = Child(element, "TelemetryMetaData");
@@ -62,27 +106,47 @@ public sealed class XtceLoader
         {
             foreach (var typeElement in Child(tm, "ParameterTypeSet")?.Elements() ?? [])
             {
-                var parameterType = ParseParameterType(typeElement, system.QualifiedName);
-                system.ParameterTypes.Add(parameterType);
-                context.Types[parameterType.QualifiedName] = parameterType;
+                try
+                {
+                    var parameterType = ParseParameterType(typeElement, system.QualifiedName);
+                    system.ParameterTypes.Add(parameterType);
+                    context.Types[parameterType.QualifiedName] = parameterType;
+                }
+                catch (XtceLoadException e)
+                {
+                    context.Diagnostics.Add(e.ToDiagnostic());
+                }
             }
 
             foreach (var parameterElement in Child(tm, "ParameterSet")?.Elements() ?? [])
             {
                 if (parameterElement.Name.LocalName != "Parameter")
                 {
+                    context.Diagnostics.Add(Error(
+                        $"Unsupported construct '{parameterElement.Name.LocalName}' in ParameterSet.",
+                        parameterElement.Name.LocalName, parameterElement));
                     continue;
                 }
 
-                var parameter = ParseParameter(parameterElement, system.QualifiedName, context);
-                system.Parameters.Add(parameter);
-                context.Parameters[parameter.QualifiedName] = parameter;
+                try
+                {
+                    var parameter = ParseParameter(parameterElement, system.QualifiedName, context);
+                    system.Parameters.Add(parameter);
+                    context.Parameters[parameter.QualifiedName] = parameter;
+                }
+                catch (XtceLoadException e)
+                {
+                    context.Diagnostics.Add(e.ToDiagnostic());
+                }
             }
 
             foreach (var containerElement in Child(tm, "ContainerSet")?.Elements() ?? [])
             {
                 if (containerElement.Name.LocalName != "SequenceContainer")
                 {
+                    context.Diagnostics.Add(Error(
+                        $"Unsupported construct '{containerElement.Name.LocalName}' in ContainerSet.",
+                        containerElement.Name.LocalName, containerElement));
                     continue;
                 }
 
@@ -100,11 +164,19 @@ public sealed class XtceLoader
 
     private static ParameterType ParseParameterType(XElement element, string systemQualifiedName)
     {
+        string localName = element.Name.LocalName;
+        if (localName is not ("IntegerParameterType" or "FloatParameterType" or "EnumeratedParameterType"))
+        {
+            throw new XtceLoadException(
+                $"Unsupported construct '{localName}' in ParameterTypeSet (outside the approved support matrix).",
+                element, localName);
+        }
+
         string name = RequiredAttribute(element, "name");
         string qualifiedName = $"{systemQualifiedName}/{name}";
         var encoding = ParseEncoding(element, qualifiedName);
 
-        switch (element.Name.LocalName)
+        switch (localName)
         {
             case "IntegerParameterType":
             {
@@ -119,7 +191,7 @@ public sealed class XtceLoader
                     name, qualifiedName, encoding,
                     ParseCalibrator(element), ParseAlarm(element));
 
-            case "EnumeratedParameterType":
+            default:
             {
                 var labels = new Dictionary<long, string>();
                 var list = Child(element, "EnumerationList")
@@ -132,9 +204,6 @@ public sealed class XtceLoader
 
                 return new EnumeratedParameterType(name, qualifiedName, encoding, labels);
             }
-
-            default:
-                throw new XtceLoadException($"Unsupported parameter type element '{element.Name.LocalName}'.", element);
         }
     }
 
@@ -148,7 +217,7 @@ public sealed class XtceLoader
             {
                 null or "unsigned" => IntegerEncodingType.Unsigned,
                 "twosComplement" => IntegerEncodingType.TwosComplement,
-                var other => throw new XtceLoadException($"Unsupported integer encoding '{other}'.", integer),
+                var other => throw new XtceLoadException($"Unsupported integer encoding '{other}'.", integer, "IntegerDataEncoding"),
             };
             return new IntegerDataEncoding(sizeInBits, encodingKind);
         }
@@ -232,10 +301,19 @@ public sealed class XtceLoader
         if (!context.Types.TryGetValue(typeQualifiedName, out var type))
         {
             throw new XtceLoadException(
-                $"Parameter '{name}' references unknown parameter type '{typeRef}'.", element);
+                $"Parameter '{name}' references unknown parameter type '{typeRef}'.", element, "Parameter");
         }
 
-        return new Parameter(name, $"{systemQualifiedName}/{name}", type, Child(element, "LongDescription")?.Value);
+        List<ParameterAlias>? aliases = null;
+        var aliasSet = Child(element, "AliasSet");
+        foreach (var alias in aliasSet?.Elements().Where(e => e.Name.LocalName == "Alias") ?? [])
+        {
+            (aliases ??= []).Add(new ParameterAlias(
+                RequiredAttribute(alias, "nameSpace"), RequiredAttribute(alias, "alias")));
+        }
+
+        return new Parameter(name, $"{systemQualifiedName}/{name}", type,
+            Child(element, "LongDescription")?.Value, aliases);
     }
 
     private static string Qualify(string reference, string systemQualifiedName) =>
@@ -266,12 +344,21 @@ public sealed class XtceLoader
             ? value
             : throw new XtceLoadException($"'{text}' is not a valid number.", element);
 
+    private static XtceDiagnostic Error(string message, string? construct, XElement? element) =>
+        new(XtceDiagnosticSeverity.Error, message, construct, LineOf(element));
+
+    private static int? LineOf(XElement? element) =>
+        element is IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : null;
+
     /// <summary>
     /// Container parsing is deferred so base containers and parameters defined
-    /// anywhere in the document resolve regardless of declaration order.
+    /// anywhere in the document resolve regardless of declaration order — and
+    /// so every broken reference is reported, not just the first.
     /// </summary>
-    private sealed class LoadContext
+    private sealed class LoadContext(List<XtceDiagnostic> diagnostics)
     {
+        public List<XtceDiagnostic> Diagnostics { get; } = diagnostics;
+
         public Dictionary<string, ParameterType> Types { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, Parameter> Parameters { get; } = new(StringComparer.Ordinal);
@@ -283,13 +370,20 @@ public sealed class XtceLoader
         public void ResolveContainers()
         {
             var byName = PendingContainers.ToDictionary(
-                pending => $"{pending.System.QualifiedName}/{RequiredAttribute(pending.Element, "name")}",
+                pending => $"{pending.System.QualifiedName}/{pending.Element.Attribute("name")?.Value}",
                 pending => pending,
                 StringComparer.Ordinal);
 
             foreach (var qualifiedName in byName.Keys)
             {
-                Build(qualifiedName, byName, new HashSet<string>(StringComparer.Ordinal));
+                try
+                {
+                    Build(qualifiedName, byName, new HashSet<string>(StringComparer.Ordinal));
+                }
+                catch (XtceLoadException e)
+                {
+                    Diagnostics.Add(e.ToDiagnostic());
+                }
             }
         }
 
@@ -305,7 +399,7 @@ public sealed class XtceLoader
 
             if (!byName.TryGetValue(qualifiedName, out var pending))
             {
-                throw new XtceLoadException($"Unknown container reference '{qualifiedName}'.");
+                throw new XtceLoadException($"Unknown container reference '{qualifiedName}'.", null, "BaseContainer");
             }
 
             if (!inProgress.Add(qualifiedName))
@@ -321,7 +415,18 @@ public sealed class XtceLoader
             if (baseElement is not null)
             {
                 string baseRef = RequiredAttribute(baseElement, "containerRef");
-                baseContainer = Build(Qualify(baseRef, system.QualifiedName), byName, inProgress);
+                try
+                {
+                    baseContainer = Build(Qualify(baseRef, system.QualifiedName), byName, inProgress);
+                }
+                catch (XtceLoadException e) when (e.Element is null)
+                {
+                    // Re-anchor the unknown-reference finding on the referring element.
+                    throw new XtceLoadException(
+                        $"Container '{qualifiedName}' references unknown container '{baseRef}'.",
+                        baseElement, "BaseContainer");
+                }
+
                 criteria = ParseCriteria(baseElement, system);
             }
 
@@ -330,14 +435,24 @@ public sealed class XtceLoader
                 RequiredAttribute(element, "name"), qualifiedName, isAbstract, baseContainer, criteria);
 
             var entryList = element.Elements().FirstOrDefault(e => e.Name.LocalName == "EntryList");
-            foreach (var entry in entryList?.Elements().Where(e => e.Name.LocalName == "ParameterRefEntry") ?? [])
+            foreach (var entry in entryList?.Elements() ?? [])
             {
+                if (entry.Name.LocalName != "ParameterRefEntry")
+                {
+                    Diagnostics.Add(Error(
+                        $"Unsupported construct '{entry.Name.LocalName}' in EntryList of '{qualifiedName}'.",
+                        entry.Name.LocalName, entry));
+                    continue;
+                }
+
                 string parameterRef = RequiredAttribute(entry, "parameterRef");
                 string parameterQualifiedName = Qualify(parameterRef, system.QualifiedName);
                 if (!Parameters.TryGetValue(parameterQualifiedName, out var parameter))
                 {
-                    throw new XtceLoadException(
-                        $"Container '{qualifiedName}' references unknown parameter '{parameterRef}'.", entry);
+                    Diagnostics.Add(Error(
+                        $"Container '{qualifiedName}' references unknown parameter '{parameterRef}'.",
+                        "ParameterRefEntry", entry));
+                    continue;
                 }
 
                 int? offset = null;
@@ -367,17 +482,16 @@ public sealed class XtceLoader
             }
 
             var criteria = new List<RestrictionCriterion>();
-            var comparisons = restriction.Name.LocalName == "Comparison"
-                ? [restriction]
-                : restriction.Descendants().Where(e => e.Name.LocalName == "Comparison");
-            foreach (var comparison in comparisons)
+            foreach (var comparison in restriction.DescendantsAndSelf().Where(e => e.Name.LocalName == "Comparison"))
             {
                 string parameterRef = RequiredAttribute(comparison, "parameterRef");
                 string parameterQualifiedName = Qualify(parameterRef, system.QualifiedName);
                 if (!Parameters.TryGetValue(parameterQualifiedName, out var parameter))
                 {
-                    throw new XtceLoadException(
-                        $"RestrictionCriteria references unknown parameter '{parameterRef}'.", comparison);
+                    Diagnostics.Add(Error(
+                        $"RestrictionCriteria references unknown parameter '{parameterRef}'.",
+                        "Comparison", comparison));
+                    continue;
                 }
 
                 var op = comparison.Attribute("comparisonOperator")?.Value switch
@@ -403,21 +517,26 @@ public sealed class XtceLoader
     }
 }
 
-/// <summary>Raised when an XTCE document cannot be loaded. Carries element line context (L2-MDB-003).</summary>
+/// <summary>
+/// Raised for one unloadable XTCE finding; convertible to the diagnostic
+/// carried by validation reports (L2-MDB-001, L2-MDB-004).
+/// </summary>
 public sealed class XtceLoadException : Exception
 {
-    public XtceLoadException(string message, XElement? element = null)
-        : base(Format(message, element))
+    public XtceLoadException(string message, XElement? element = null, string? construct = null)
+        : base(message)
     {
+        Element = element;
+        Construct = construct;
+        Line = element is IXmlLineInfo info && info.HasLineInfo() ? info.LineNumber : null;
     }
 
-    private static string Format(string message, XElement? element)
-    {
-        if (element is System.Xml.IXmlLineInfo lineInfo && lineInfo.HasLineInfo())
-        {
-            return $"{message} (line {lineInfo.LineNumber})";
-        }
+    public XElement? Element { get; }
 
-        return message;
-    }
+    public string? Construct { get; }
+
+    public int? Line { get; }
+
+    public XtceDiagnostic ToDiagnostic() =>
+        new(XtceDiagnosticSeverity.Error, Message, Construct, Line);
 }

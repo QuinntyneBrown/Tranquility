@@ -89,7 +89,47 @@ public static class CucTimeCodec
     /// </summary>
     public static void EncodeImplicit(CucTime time, Span<byte> tField, int coarseOctets, int fineOctets)
     {
-        throw new NotImplementedException();
+        if (coarseOctets is < 1 or > 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(coarseOctets), "CUC coarse time is 1 to 4 octets.");
+        }
+
+        if (fineOctets is < 0 or > 3)
+        {
+            throw new ArgumentOutOfRangeException(nameof(fineOctets), "CUC fine time is 0 to 3 octets.");
+        }
+
+        if (tField.Length < coarseOctets + fineOctets)
+        {
+            throw new ArgumentException(
+                $"T-field of {tField.Length} octets cannot hold {coarseOctets + fineOctets} octets.", nameof(tField));
+        }
+
+        if (coarseOctets < 8 && time.CoarseSeconds >= 1UL << (8 * coarseOctets))
+        {
+            throw new ArgumentOutOfRangeException(nameof(time),
+                $"Coarse seconds {time.CoarseSeconds} do not fit {coarseOctets} octets.");
+        }
+
+        for (int i = coarseOctets - 1; i >= 0; i--)
+        {
+            tField[i] = (byte)(time.CoarseSeconds >> (8 * (coarseOctets - 1 - i)));
+        }
+
+        if (fineOctets > 0)
+        {
+            ulong scale = 1UL << (8 * fineOctets);
+            ulong fine = (ulong)Math.Round(time.FineFraction * scale);
+            if (fine >= scale)
+            {
+                fine = scale - 1;
+            }
+
+            for (int i = 0; i < fineOctets; i++)
+            {
+                tField[coarseOctets + i] = (byte)(fine >> (8 * (fineOctets - 1 - i)));
+            }
+        }
     }
 }
 

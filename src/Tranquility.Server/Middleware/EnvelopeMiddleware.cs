@@ -16,6 +16,20 @@ public sealed class ExceptionEnvelopeMiddleware(RequestDelegate next, ILogger<Ex
         {
             await next(context);
         }
+        catch (ValidationServiceException exception) when (!context.Response.HasStarted)
+        {
+            // Envelope plus the exhaustive validation report (L2-MDB-001/004).
+            context.Response.StatusCode = exception.StatusCode;
+            context.Response.ContentType = "application/json";
+            await System.Text.Json.JsonSerializer.SerializeAsync(context.Response.Body, new
+            {
+                exception = new Wire.ExceptionInfo(exception.WireType, exception.Message),
+                validationReport = exception.Diagnostics
+                    .Select(d => new Wire.ValidationFinding(
+                        d.Severity.ToString().ToUpperInvariant(), d.Message, d.Construct, d.Line))
+                    .ToList(),
+            }, Wire.Json.WireJson.Options, context.RequestAborted);
+        }
         catch (ServiceException exception) when (!context.Response.HasStarted)
         {
             await ApiResults.WriteErrorAsync(context, exception.StatusCode, exception.WireType, exception.Message);

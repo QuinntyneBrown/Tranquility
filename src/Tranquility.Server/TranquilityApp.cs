@@ -41,6 +41,7 @@ public static class TranquilityApp
 
         // Core services
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<IMdbLoader, Infrastructure.Xtce.XtceFileMdbLoader>();
         builder.Services.AddSingleton<InstanceRegistry>();
         builder.Services.AddSingleton<IAuditLog, InMemoryAuditLog>();
         builder.Services.AddSingleton<IIdentityStore, ConfigIdentityStore>();
@@ -55,6 +56,10 @@ public static class TranquilityApp
         builder.Services.AddSingleton<ICommandHandler<StartInstanceCommand, InstanceSnapshot>, StartInstanceCommandHandler>();
         builder.Services.AddSingleton<ICommandHandler<StopInstanceCommand, InstanceSnapshot>, StopInstanceCommandHandler>();
         builder.Services.AddSingleton<ICommandHandler<RestartInstanceCommand, InstanceSnapshot>, RestartInstanceCommandHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetMdbOverviewQuery, MdbOverviewSnapshot>, GetMdbOverviewQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetSpaceSystemsQuery, IReadOnlyList<SpaceSystemNode>>, GetSpaceSystemsQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetMdbParameterQuery, MdbParameterSnapshot>, GetMdbParameterQueryHandler>();
+        builder.Services.AddSingleton<ICommandHandler<LoadMissionDatabaseCommand, MdbOverviewSnapshot>, LoadMissionDatabaseCommandHandler>();
 
         // AuthN/AuthZ from day one (L2-SEC-002, L2-SEC-003).
         builder.Services
@@ -76,6 +81,7 @@ public static class TranquilityApp
 
         AuthEndpoints.Map(app);
         InstanceEndpoints.Map(app);
+        MdbEndpoints.Map(app);
 
         // Unmatched routes still answer in the documented envelope (L2-API-004).
         app.MapFallback(IResult () => throw new NotFoundServiceException("No such resource"));

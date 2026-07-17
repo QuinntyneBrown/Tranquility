@@ -25,6 +25,24 @@ public static class SpacePacketValidator
     /// <summary>Returns null when the buffer holds a structurally valid packet.</summary>
     public static PacketError? Validate(ReadOnlySpan<byte> buffer)
     {
-        throw new NotImplementedException();
+        if (!SpacePacketHeader.TryParse(buffer, out var header))
+        {
+            return new PacketError(PacketErrorCode.TruncatedHeader,
+                $"Buffer of {buffer.Length} octets is shorter than the {SpacePacketHeader.Length}-octet primary header");
+        }
+
+        if (header.Version != 0)
+        {
+            return new PacketError(PacketErrorCode.UnsupportedVersion,
+                $"Packet version number {header.Version} is not 0 (CCSDS 133.0-B)");
+        }
+
+        if (buffer.Length < header.TotalPacketLength)
+        {
+            return new PacketError(PacketErrorCode.TruncatedBody,
+                $"Buffer of {buffer.Length} octets is shorter than the declared total packet length of {header.TotalPacketLength} octets");
+        }
+
+        return null;
     }
 }
