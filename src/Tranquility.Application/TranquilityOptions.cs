@@ -11,6 +11,17 @@ public sealed class TranquilityOptions
     public string? MdbDirectory { get; init; }
 
     public SecurityOptions Security { get; init; } = new();
+
+    public WebSocketOptions WebSocket { get; init; } = new();
+}
+
+public sealed class WebSocketOptions
+{
+    /// <summary>
+    /// Per-session outbound buffer capacity; overflow drops messages with an
+    /// observable seq discontinuity (L2-RTS-004).
+    /// </summary>
+    public int SessionBufferSize { get; init; } = 4096;
 }
 
 public sealed class InstanceOptions

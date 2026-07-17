@@ -127,7 +127,8 @@ public sealed class WsTestClient(WebSocket socket) : IAsyncDisposable
             {
                 await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", cts.Token);
             }
-            catch (Exception e) when (e is OperationCanceledException or WebSocketException)
+            catch (Exception e) when (e is OperationCanceledException or WebSocketException
+                or IOException or ObjectDisposedException)
             {
             }
         }

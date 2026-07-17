@@ -54,11 +54,17 @@ public sealed class MissionInstance(string name, TimeProvider timeProvider)
     public MissionDatabase RequireMdb() => _mdb
         ?? throw new NotFoundServiceException($"No active mission database for instance '{Name}'");
 
+    /// <summary>The realtime processor attached by the host at startup.</summary>
+    public Processing.RealtimeProcessor? Processor { get; private set; }
+
+    public void AttachProcessor(Processing.RealtimeProcessor processor) => Processor = processor;
+
     public InstanceSnapshot Snapshot()
     {
         lock (_gate)
         {
-            return new InstanceSnapshot(Name, State, timeProvider.GetUtcNow(), []);
+            var processors = Processor is { } p ? new[] { p.Snapshot() } : [];
+            return new InstanceSnapshot(Name, State, timeProvider.GetUtcNow(), processors);
         }
     }
 
@@ -72,8 +78,10 @@ public sealed class MissionInstance(string name, TimeProvider timeProvider)
             }
 
             State = InstanceState.Running;
-            return Snapshot();
         }
+
+        Processor?.Start();
+        return Snapshot();
     }
 
     public InstanceSnapshot Stop()
@@ -86,8 +94,10 @@ public sealed class MissionInstance(string name, TimeProvider timeProvider)
             }
 
             State = InstanceState.Offline;
-            return Snapshot();
         }
+
+        Processor?.Stop();
+        return Snapshot();
     }
 
     public InstanceSnapshot Restart()
@@ -95,8 +105,11 @@ public sealed class MissionInstance(string name, TimeProvider timeProvider)
         lock (_gate)
         {
             State = InstanceState.Running;
-            return Snapshot();
         }
+
+        Processor?.Stop();
+        Processor?.Start();
+        return Snapshot();
     }
 }
 

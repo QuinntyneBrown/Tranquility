@@ -44,6 +44,8 @@ public static class TranquilityApp
         builder.Services.AddSingleton<IMdbLoader, Infrastructure.Xtce.XtceFileMdbLoader>();
         builder.Services.AddSingleton<ILinkFactory, Infrastructure.Links.LinkFactory>();
         builder.Services.AddSingleton<InstanceRegistry>();
+        builder.Services.AddSingleton<Application.Processing.SubscriptionHub>();
+        builder.Services.AddSingleton<WebSockets.WebSocketApiHandler>();
         builder.Services.AddHostedService<Hosting.TelemetryHostedService>();
         builder.Services.AddSingleton<IAuditLog, InMemoryAuditLog>();
         builder.Services.AddSingleton<IIdentityStore, ConfigIdentityStore>();
@@ -81,9 +83,13 @@ public static class TranquilityApp
         var app = builder.Build();
 
         app.UseMiddleware<ExceptionEnvelopeMiddleware>();
+        app.UseWebSockets();
         app.UseAuthentication();
         app.UseMiddleware<MutationAuthenticationMiddleware>();
         app.UseAuthorization();
+
+        app.MapGet("/api/websocket",
+            (HttpContext context, WebSockets.WebSocketApiHandler handler) => handler.HandleAsync(context));
 
         AuthEndpoints.Map(app);
         InstanceEndpoints.Map(app);
