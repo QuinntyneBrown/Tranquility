@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tranquility.Application/Tranquility.Application.csproj" />
+    <Project Path="src/Tranquility.Core/Tranquility.Core.csproj" />
+    <Project Path="src/Tranquility.Infrastructure/Tranquility.Infrastructure.csproj" />
+    <Project Path="src/Tranquility.Server/Tranquility.Server.csproj" />
+    <Project Path="src/Tranquility.Wire/Tranquility.Wire.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tranquility.AcceptanceTests/Tranquility.AcceptanceTests.csproj" />
+  </Folder>
+</Solution>

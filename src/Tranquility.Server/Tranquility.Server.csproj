@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tranquility.Application\Tranquility.Application.csproj" />
+    <ProjectReference Include="..\Tranquility.Infrastructure\Tranquility.Infrastructure.csproj" />
+    <ProjectReference Include="..\Tranquility.Wire\Tranquility.Wire.csproj" />
+  </ItemGroup>
+
+</Project>

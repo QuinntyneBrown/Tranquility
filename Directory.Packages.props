@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <!-- Every dependency is pinned here and license-audited in CI (L2-QLT-003).
+       All licenses must be Apache-2.0 compatible. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />          <!-- MIT -->
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />                          <!-- Apache-2.0 -->
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />         <!-- Apache-2.0 -->
+  </ItemGroup>
+</Project>
