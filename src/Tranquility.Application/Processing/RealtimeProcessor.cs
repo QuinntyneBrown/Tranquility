@@ -10,7 +10,11 @@ namespace Tranquility.Application.Processing;
 /// fans out in fixed order — cache, alarms, subscribers — on one consumer
 /// task per link for deterministic per-link ordering.
 /// </summary>
-public sealed class RealtimeProcessor(MissionInstance instance, SubscriptionHub hub, TimeProvider time)
+public sealed class RealtimeProcessor(
+    MissionInstance instance,
+    SubscriptionHub hub,
+    TimeProvider time,
+    Abstractions.IArchive? archive = null) : IProcessor
 {
     public const string RealtimeName = "realtime";
 
@@ -75,7 +79,7 @@ public sealed class RealtimeProcessor(MissionInstance instance, SubscriptionHub 
         {
             await foreach (var packet in link.Packets.ReadAllAsync(cancellationToken))
             {
-                Process(packet);
+                Process(packet, link.Name);
             }
         }
         catch (OperationCanceledException)
@@ -83,7 +87,7 @@ public sealed class RealtimeProcessor(MissionInstance instance, SubscriptionHub 
         }
     }
 
-    private void Process(byte[] packet)
+    private void Process(byte[] packet, string linkName)
     {
         if (SpacePacketValidator.Validate(packet) is not null)
         {
@@ -107,7 +111,7 @@ public sealed class RealtimeProcessor(MissionInstance instance, SubscriptionHub 
         var engine = new DecommutationEngine(mdb);
         var result = engine.Decommutate(packet, root, generationTime: now, acquisitionTime: now);
 
-        // Fixed fan-out order: cache -> alarms -> subscribers.
+        // Fixed fan-out order: cache -> alarms -> subscribers -> archive.
         _cache.Update(result.Values);
         foreach (var value in result.Values)
         {
@@ -118,5 +122,19 @@ public sealed class RealtimeProcessor(MissionInstance instance, SubscriptionHub 
         }
 
         hub.PublishParameters(new ParameterBatch(instance.Name, Name, result.Values));
+
+        if (archive is not null)
+        {
+            var nowUs = Abstractions.MicroTime.FromDateTimeOffset(now);
+            archive.RecordPacket(instance.Name, new Abstractions.PacketRecord(
+                nowUs, nowUs, header.Apid, header.SequenceCount, linkName, packet));
+            archive.RecordParameters(instance.Name, result.Values
+                .Select(v => new Abstractions.ArchivedParameterValue(
+                    v.Parameter.QualifiedName, v.RawValue, v.EngValue,
+                    Abstractions.MicroTime.FromDateTimeOffset(v.GenerationTime),
+                    Abstractions.MicroTime.FromDateTimeOffset(v.AcquisitionTime),
+                    MonitoringNames.Wire(v.Monitoring)))
+                .ToList());
+        }
     }
 }

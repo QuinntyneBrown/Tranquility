@@ -10,6 +10,9 @@ public sealed class TranquilityOptions
     /// <summary>Directory operator-supplied XTCE references resolve inside.</summary>
     public string? MdbDirectory { get; init; }
 
+    /// <summary>Root directory for per-instance archive databases.</summary>
+    public string? DataDirectory { get; init; }
+
     public SecurityOptions Security { get; init; } = new();
 
     public WebSocketOptions WebSocket { get; init; } = new();

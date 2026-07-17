@@ -6,4 +6,10 @@
     <ProjectReference Include="..\Tranquility.Application\Tranquility.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Overrides the vulnerable transitive native bundle (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+  </ItemGroup>
+
 </Project>

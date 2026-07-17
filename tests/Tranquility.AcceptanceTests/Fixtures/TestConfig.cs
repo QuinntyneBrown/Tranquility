@@ -28,6 +28,9 @@ public static class TestConfig
 
     public static Dictionary<string, string?> Settings() => new()
     {
+        // Unique per host so parallel fixtures never share SQLite files.
+        ["Tranquility:DataDirectory"] = Path.Combine(
+            Path.GetTempPath(), "tranquility-tests", Guid.NewGuid().ToString("N")),
         ["Tranquility:Instances:0:Name"] = Instance,
         ["Tranquility:Instances:0:MdbPath"] = Path.Combine(XtceFixtureDirectory, "SampleSat.xml"),
         ["Tranquility:Instances:0:Links:0:Name"] = "tm-in",

@@ -13,5 +13,8 @@
     <PackageVersion Include="CsCheck" Version="4.7.0" />                              <!-- MIT -->
     <PackageVersion Include="Google.Protobuf" Version="3.35.1" />                     <!-- BSD-3-Clause -->
     <PackageVersion Include="Grpc.Tools" Version="2.82.0" />                          <!-- Apache-2.0, build-time only -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />              <!-- MIT -->
+    <!-- Explicit bundle pin: the transitive 2.1.11 native lib carries GHSA-2m69-gcr7-jv3q. -->
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />        <!-- Apache-2.0 -->
   </ItemGroup>
 </Project>

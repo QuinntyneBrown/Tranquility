@@ -68,15 +68,20 @@ public static class ProtoMapper
         ViolationCount = e.Transition.Alarm.ViolationCount,
     };
 
-    public static string MonitoringName(MonitoringResult monitoring) => monitoring switch
+    public static string MonitoringName(MonitoringResult monitoring) =>
+        MonitoringNames.Wire(monitoring);
+
+    /// <summary>Archived value → wire shape (same as live values, L2-ARC-001).</summary>
+    public static Wire.Proto.ParameterValue ToProto(Application.Abstractions.ArchivedParameterValue value) => new()
     {
-        MonitoringResult.Disabled => "",
-        MonitoringResult.InLimits => "IN_LIMITS",
-        MonitoringResult.Watch => "WATCH",
-        MonitoringResult.Warning => "WARNING",
-        MonitoringResult.Distress => "DISTRESS",
-        MonitoringResult.Critical => "CRITICAL",
-        _ => "SEVERE",
+        Id = new NamedObjectId { Name = value.QualifiedName },
+        RawValue = ToValue(value.RawValue),
+        EngValue = ToValue(value.EngValue),
+        AcquisitionTime = Timestamp.FromDateTimeOffset(
+            Application.Abstractions.MicroTime.ToDateTimeOffset(value.AcqTimeUs)),
+        GenerationTime = Timestamp.FromDateTimeOffset(
+            Application.Abstractions.MicroTime.ToDateTimeOffset(value.GenTimeUs)),
+        MonitoringResult = value.Monitoring,
     };
 
     private static Value ToValue(object raw) => raw switch
