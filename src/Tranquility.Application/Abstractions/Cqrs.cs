@@ -52,6 +52,15 @@ public sealed class Dispatcher(IServiceProvider services) : ICommandDispatcher, 
         var handler = services.GetService(handlerType)
             ?? throw new InvalidOperationException($"No handler registered for {message.GetType().Name}.");
         var method = handlerType.GetMethod("Handle")!;
-        return (Task<TResult>)method.Invoke(handler, [message, cancellationToken])!;
+        try
+        {
+            return (Task<TResult>)method.Invoke(handler, [message, cancellationToken])!;
+        }
+        catch (System.Reflection.TargetInvocationException e) when (e.InnerException is not null)
+        {
+            // Surface the handler's own exception, not the reflection wrapper.
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(e.InnerException);
+            throw; // unreachable
+        }
     }
 }

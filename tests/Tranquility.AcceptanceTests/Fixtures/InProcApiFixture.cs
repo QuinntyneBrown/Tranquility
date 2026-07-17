@@ -19,7 +19,13 @@ public sealed class InProcApiFixture : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
-        builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(TestConfig.Settings()));
+
+        // UseSetting (not ConfigureAppConfiguration) so values are visible to
+        // configuration reads during app composition under minimal hosting.
+        foreach (var (key, value) in TestConfig.Settings())
+        {
+            builder.UseSetting(key, value);
+        }
     }
 
     /// <summary>Obtains a bearer token via the documented token endpoint.</summary>

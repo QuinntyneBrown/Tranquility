@@ -62,3 +62,7 @@ jobs:
           -a "Apache-2.0;MIT;BSD-2-Clause;BSD-3-Clause;MS-PL;0BSD"
           -mapping build/license-url-mappings.json
           -o JsonPretty
+
+      - name: License gate control tests (L2-QLT-003)
+        # Negative control: proves the gate can fail on a disallowed license.
+        run: dotnet test --configuration Release --filter "Category=LicenseAudit"
