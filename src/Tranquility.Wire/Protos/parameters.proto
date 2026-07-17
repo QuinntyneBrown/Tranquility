@@ -1,0 +1,49 @@
+// Clean-room Tranquility wire schema, authored solely from prose API
+// documentation and this repository's ICD (TRQ-ICD-API). No reference-system
+// interface definition files were consulted (TBD-012 posture, ADR-0008).
+syntax = "proto3";
+
+package tranquility.wire;
+
+option csharp_namespace = "Tranquility.Wire.Proto";
+
+import "google/protobuf/timestamp.proto";
+
+// Identifies a parameter by qualified name or by alias namespace + name.
+message NamedObjectId {
+  string name = 1;
+  string namespace = 2;
+}
+
+message SubscribeParametersRequest {
+  string instance = 1;
+  string processor = 2;
+  repeated NamedObjectId id = 3;
+  bool send_from_cache = 4;
+  bool abort_on_invalid = 5;
+}
+
+message Value {
+  oneof v {
+    double double_value = 1;
+    sint64 sint64_value = 2;
+    uint64 uint64_value = 3;
+    bool bool_value = 4;
+    string string_value = 5;
+    bytes binary_value = 6;
+    float float_value = 7;
+  }
+}
+
+message ParameterValue {
+  NamedObjectId id = 1;
+  Value raw_value = 2;
+  Value eng_value = 3;
+  google.protobuf.Timestamp acquisition_time = 4;
+  google.protobuf.Timestamp generation_time = 5;
+  string monitoring_result = 6;
+}
+
+message ParameterData {
+  repeated ParameterValue values = 1;
+}

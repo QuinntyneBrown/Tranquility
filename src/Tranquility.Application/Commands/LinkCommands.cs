@@ -14,7 +14,11 @@ public sealed record ResetLinkCountersCommand(string Instance, string Link, stri
 public sealed record RunLinkActionCommand(string Instance, string Link, string Action, string Actor)
     : ICommand<object>;
 
-public sealed class SetLinkEnabledCommandHandler(InstanceRegistry registry, IAuditLog audit, TimeProvider time)
+public sealed class SetLinkEnabledCommandHandler(
+    InstanceRegistry registry,
+    Processing.SubscriptionHub hub,
+    IAuditLog audit,
+    TimeProvider time)
     : ICommandHandler<SetLinkEnabledCommand, LinkSnapshot>
 {
     public async Task<LinkSnapshot> Handle(SetLinkEnabledCommand command, CancellationToken cancellationToken)
@@ -32,7 +36,10 @@ public sealed class SetLinkEnabledCommandHandler(InstanceRegistry registry, IAud
         await audit.AppendAsync(new AuditEntry(time.GetUtcNow(), command.Actor,
             command.Enabled ? "link-enable" : "link-disable",
             $"{command.Instance}/links/{command.Link}", "success", null), cancellationToken);
-        return ListLinksQueryHandler.Snapshot(link);
+
+        var snapshot = ListLinksQueryHandler.Snapshot(link);
+        hub.PublishLink(new Processing.LinkStateEvent(command.Instance, snapshot));
+        return snapshot;
     }
 }
 

@@ -1,0 +1,59 @@
+// Clean-room Tranquility wire schema (see parameters.proto header).
+// WebSocket framing: client messages carry {type, id, options}; server
+// messages carry {type, call, seq, data} with call/seq correlation semantics.
+syntax = "proto3";
+
+package tranquility.wire;
+
+option csharp_namespace = "Tranquility.Wire.Proto";
+
+import "parameters.proto";
+import "events.proto";
+
+message ClientMessage {
+  string type = 1;
+  int32 id = 2;
+  oneof options {
+    SubscribeParametersRequest parameters = 3;
+    CancelOptions cancel = 4;
+  }
+}
+
+message CancelOptions {
+  int32 call = 1;
+}
+
+message ExceptionInfo {
+  string type = 1;
+  string msg = 2;
+}
+
+message Reply {
+  int32 reply_to = 1;
+  int32 call = 2;
+  ExceptionInfo exception = 3;
+}
+
+message CallInfo {
+  int32 call = 1;
+  string type = 2;
+}
+
+message SessionState {
+  repeated CallInfo calls = 1;
+  int64 dropped_messages = 2;
+}
+
+message ServerMessage {
+  string type = 1;
+  int32 call = 2;
+  int64 seq = 3;
+  oneof data {
+    Reply reply = 4;
+    ParameterData parameters = 5;
+    LinkEvent link_event = 6;
+    ProcessorInfo processor = 7;
+    AlarmData alarm = 8;
+    SessionState state = 9;
+  }
+}
