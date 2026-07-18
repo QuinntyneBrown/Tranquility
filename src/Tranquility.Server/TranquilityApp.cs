@@ -54,7 +54,9 @@ public static class TranquilityApp
         builder.Services.AddSingleton<Infrastructure.Sqlite.SqliteAuditLog>();
         builder.Services.AddSingleton<IAuditLog>(sp => sp.GetRequiredService<Infrastructure.Sqlite.SqliteAuditLog>());
         builder.Services.AddSingleton<IAuditQuery>(sp => sp.GetRequiredService<Infrastructure.Sqlite.SqliteAuditLog>());
-        builder.Services.AddSingleton<IIdentityStore, ConfigIdentityStore>();
+        builder.Services.AddSingleton<Infrastructure.Sqlite.SqliteIdentityStore>();
+        builder.Services.AddSingleton<IIdentityStore>(sp => sp.GetRequiredService<Infrastructure.Sqlite.SqliteIdentityStore>());
+        builder.Services.AddSingleton<IIamAdmin>(sp => sp.GetRequiredService<Infrastructure.Sqlite.SqliteIdentityStore>());
         builder.Services.AddSingleton<TokenService>();
 
         // CQRS (L2-QLT-006): one dispatcher per path, handlers by convention.
@@ -128,6 +130,7 @@ public static class TranquilityApp
         AuditEndpoints.Map(app);
         TcoEndpoints.Map(app);
         FileTransferEndpoints.Map(app);
+        IamEndpoints.Map(app);
 
         // Unmatched routes still answer in the documented envelope (L2-API-004).
         app.MapFallback(IResult () => throw new NotFoundServiceException("No such resource"));
