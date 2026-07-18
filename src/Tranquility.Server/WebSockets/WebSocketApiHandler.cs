@@ -150,6 +150,16 @@ public sealed class WebSocketApiHandler(
                             }
                         }));
                     break;
+                case "file-transfers":
+                    SubscribeTopic(session, id, "file-transfers", InstanceOf(jsonOptions),
+                        (call, instance) => hub.SubscribeTransfers(e =>
+                        {
+                            if (e.Instance == instance)
+                            {
+                                session.Enqueue("file-transfers", call, ProtoMapper.ToProto(e));
+                            }
+                        }));
+                    break;
                 case "cancel":
                 {
                     var call = proto?.Cancel?.Call

@@ -33,3 +33,18 @@ message AlarmData {
   ParameterValue most_recent_value = 5;
   int32 violation_count = 6;
 }
+
+message TransferInfo {
+  string instance = 1;
+  string id = 2;
+  string state = 3;
+  string bucket = 4;
+  string object_name = 5;
+  string remote_path = 6;
+  string direction = 7;
+  int64 total_size = 8;
+  int64 size_transferred = 9;
+  bool reliable = 10;
+  string transfer_type = 11;
+  string failure_reason = 12;
+}

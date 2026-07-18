@@ -46,6 +46,8 @@ public static class TranquilityApp
         builder.Services.AddSingleton<InstanceRegistry>();
         builder.Services.AddSingleton<Application.Processing.SubscriptionHub>();
         builder.Services.AddSingleton<Application.Tco.TcoRegistry>();
+        builder.Services.AddSingleton<IFilestore, Infrastructure.Cfdp.LocalFilestore>();
+        builder.Services.AddSingleton<Application.Cfdp.TransferRegistry>();
         builder.Services.AddSingleton<IArchive, Infrastructure.Sqlite.SqliteArchive>();
         builder.Services.AddSingleton<WebSockets.WebSocketApiHandler>();
         builder.Services.AddHostedService<Hosting.TelemetryHostedService>();
@@ -125,6 +127,7 @@ public static class TranquilityApp
         CommandingEndpoints.Map(app);
         AuditEndpoints.Map(app);
         TcoEndpoints.Map(app);
+        FileTransferEndpoints.Map(app);
 
         // Unmatched routes still answer in the documented envelope (L2-API-004).
         app.MapFallback(IResult () => throw new NotFoundServiceException("No such resource"));

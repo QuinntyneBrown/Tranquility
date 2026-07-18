@@ -106,6 +106,7 @@ public sealed class WsSession : IAsyncDisposable
             case ProcessorInfo pr: message.Processor = pr; break;
             case AlarmData a: message.Alarm = a; break;
             case SessionState s: message.State = s; break;
+            case TransferInfo t: message.Transfer = t; break;
             default: throw new InvalidOperationException($"Unmapped payload type {payload.GetType().Name}");
         }
 

@@ -53,6 +53,22 @@ public static class ProtoMapper
         State = e.Processor.State,
     };
 
+    public static TransferInfo ToProto(TransferEvent e) => new()
+    {
+        Instance = e.Instance,
+        Id = e.Transfer.Id,
+        State = e.Transfer.State.ToString().ToUpperInvariant(),
+        Bucket = e.Transfer.Bucket,
+        ObjectName = e.Transfer.ObjectName,
+        RemotePath = e.Transfer.RemotePath,
+        Direction = e.Transfer.Direction,
+        TotalSize = e.Transfer.TotalSize,
+        SizeTransferred = Interlocked.Read(ref e.Transfer.SizeTransferred),
+        Reliable = e.Transfer.Reliable,
+        TransferType = "CFDP",
+        FailureReason = e.Transfer.FailureReason ?? "",
+    };
+
     public static AlarmData ToProto(AlarmEvent e) => new()
     {
         NotificationType = e.Transition.Kind switch
