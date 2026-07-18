@@ -55,5 +55,6 @@ message ServerMessage {
     ProcessorInfo processor = 7;
     AlarmData alarm = 8;
     SessionState state = 9;
+    TransferInfo transfer = 10;
   }
 }

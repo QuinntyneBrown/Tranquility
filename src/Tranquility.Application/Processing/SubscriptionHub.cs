@@ -12,6 +12,8 @@ public sealed record ProcessorStateEvent(string Instance, ProcessorSnapshot Proc
 
 public sealed record AlarmEvent(string Instance, AlarmTransition Transition);
 
+public sealed record TransferEvent(string Instance, Cfdp.TransferRecord Transfer);
+
 /// <summary>
 /// Synchronous in-process fan-out for realtime updates (L2-RTS-002/003,
 /// L2-PAR-004). Dispatch happens on the publisher's thread in subscription
@@ -24,6 +26,7 @@ public sealed class SubscriptionHub
     private readonly List<Action<LinkStateEvent>> _links = [];
     private readonly List<Action<ProcessorStateEvent>> _processors = [];
     private readonly List<Action<AlarmEvent>> _alarms = [];
+    private readonly List<Action<TransferEvent>> _transfers = [];
 
     public IDisposable SubscribeParameters(Action<ParameterBatch> handler) => Add(_parameters, handler);
 
@@ -33,6 +36,8 @@ public sealed class SubscriptionHub
 
     public IDisposable SubscribeAlarms(Action<AlarmEvent> handler) => Add(_alarms, handler);
 
+    public IDisposable SubscribeTransfers(Action<TransferEvent> handler) => Add(_transfers, handler);
+
     public void PublishParameters(ParameterBatch batch) => Dispatch(_parameters, batch);
 
     public void PublishLink(LinkStateEvent e) => Dispatch(_links, e);
@@ -40,6 +45,8 @@ public sealed class SubscriptionHub
     public void PublishProcessor(ProcessorStateEvent e) => Dispatch(_processors, e);
 
     public void PublishAlarm(AlarmEvent e) => Dispatch(_alarms, e);
+
+    public void PublishTransfer(TransferEvent e) => Dispatch(_transfers, e);
 
     private IDisposable Add<T>(List<Action<T>> list, Action<T> handler)
     {

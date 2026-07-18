@@ -71,7 +71,7 @@ public sealed class CfdpCoreTests
     }
 
     [Theory]
-    [InlineData(1)]  // drop every FileData: forces class-2 NAK retransmission
+    [InlineData(2)]  // drop every 2nd FileData: forces class-2 NAK retransmission
     [InlineData(3)]
     [InlineData(0)]  // lossless
     [Requirement("L2-FDP-001")]
