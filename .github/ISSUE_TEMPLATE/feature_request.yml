@@ -1,0 +1,66 @@
+name: Feature request
+description: Propose a scoped Tranquility improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the operational need before prescribing an implementation. Large protocol, scope, or requirement changes need maintainer discussion.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or operational need
+      description: What capability or workflow is missing?
+    validations:
+      required: true
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: Owning subsystem
+      options:
+        - Application Programming Interface
+        - Archive
+        - CCSDS File Delivery Protocol
+        - Commanding
+        - Data Links
+        - Differential Conformance
+        - Lifecycle
+        - Mission Database
+        - Parameter Processing
+        - Quality and Governance
+        - Real-time Streaming
+        - Security
+        - Space Data Link Protocol
+        - Space Packet Processing and Decommutation
+        - Time Correlation
+        - New or cross-cutting subsystem
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior and acceptance criteria.
+    validations:
+      required: true
+  - type: textarea
+    id: standards
+    attributes:
+      label: Standards and source material
+      description: Cite published standards or public interface documentation. Do not attach private or proprietary source material.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or designs have you considered?
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Clean-room checks
+      options:
+        - label: This request contains no secrets, mission data, or private source material.
+          required: true
+        - label: I understand requirement and wire-contract changes require tests and documentation.
+          required: true

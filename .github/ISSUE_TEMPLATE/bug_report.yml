@@ -1,0 +1,88 @@
+name: Bug report
+description: Report a reproducible Tranquility defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Tranquility. Do not include secrets, mission data, private interface documents, or vulnerability details. Report security issues through private vulnerability reporting.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release, branch, or commit SHA where the problem occurs.
+      placeholder: main at abc1234
+    validations:
+      required: true
+  - type: input
+    id: requirements
+    attributes:
+      label: Related requirement IDs
+      description: List affected L1/L2 IDs if known.
+      placeholder: L2-API-004, L2-SEC-003
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: Subsystem
+      options:
+        - Application Programming Interface
+        - Archive
+        - CCSDS File Delivery Protocol
+        - Commanding
+        - Data Links
+        - Differential Conformance
+        - Lifecycle
+        - Mission Database
+        - Parameter Processing
+        - Quality and Governance
+        - Real-time Streaming
+        - Security
+        - Space Data Link Protocol
+        - Space Packet Processing and Decommutation
+        - Time Correlation
+        - Cross-cutting or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest synthetic reproduction.
+      placeholder: |
+        1. Configure ...
+        2. Send ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, .NET SDK, transport, and relevant sanitized configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or evidence
+      description: Remove secrets, identifiers, mission data, and private material.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I reproduced this on the latest main branch.
+          required: true
+        - label: This report contains no secrets, mission data, or private source material.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
