@@ -46,6 +46,40 @@ public interface IAuditQuery
     AuditChainStatus Verify();
 }
 
+// ---- IAM administration (L2-SEC-001) ----
+
+public sealed record IamUser(string Username, bool Superuser, IReadOnlyList<string> Roles);
+
+public sealed record IamGroup(string Name, IReadOnlyList<string> Members);
+
+public sealed record IamRole(string Name, IReadOnlyList<string> Privileges);
+
+public sealed record IamServiceAccount(string Name, IReadOnlyList<string> Roles);
+
+/// <summary>CRUD over IAM resources (L2-SEC-001). Backed by the SQLite identity store.</summary>
+public interface IIamAdmin
+{
+    IReadOnlyList<IamUser> ListUsers();
+
+    IamUser CreateUser(string username, string password, IReadOnlyList<string> roles, bool superuser);
+
+    IamUser UpdateUser(string username, IReadOnlyList<string>? roles, string? password);
+
+    void DeleteUser(string username);
+
+    IReadOnlyList<IamGroup> ListGroups();
+
+    IamGroup CreateGroup(string name, IReadOnlyList<string> members);
+
+    IReadOnlyList<IamRole> ListRoles();
+
+    IamRole CreateRole(string name, IReadOnlyList<string> privileges);
+
+    IReadOnlyList<IamServiceAccount> ListServiceAccounts();
+
+    IamServiceAccount CreateServiceAccount(string name, IReadOnlyList<string> roles);
+}
+
 /// <summary>System privilege names used by authorization policies (L2-SEC-003).</summary>
 public static class SystemPrivileges
 {
