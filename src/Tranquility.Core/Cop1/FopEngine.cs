@@ -59,6 +59,9 @@ public sealed record RejectBusy(long RequestId) : FopOutput;
 /// </summary>
 public sealed class FopEngine(Cop1Profile profile)
 {
+    private readonly List<SentFrame> _sentQueue = [];
+    private int _transmissionCount;
+
     public FopState State { get; private set; } = FopState.Active;
 
     /// <summary>Next frame sequence number V(S).</summary>
@@ -67,15 +70,150 @@ public sealed class FopEngine(Cop1Profile profile)
     /// <summary>Expected acknowledgement frame sequence number NN(R).</summary>
     public byte NnR { get; private set; }
 
-    public int SentQueueDepth => throw new NotImplementedException();
+    public int SentQueueDepth => _sentQueue.Count;
 
-    public int TransmissionCount => throw new NotImplementedException();
+    public int TransmissionCount => _transmissionCount;
 
     public Cop1Profile Profile { get; } = profile;
 
     /// <summary>Processes one event; returns the resulting protocol actions.</summary>
     public IReadOnlyList<FopOutput> Handle(FopEvent fopEvent)
     {
-        throw new NotImplementedException();
+        var outputs = new List<FopOutput>();
+        switch (fopEvent)
+        {
+            case TransmitAdRequest request:
+                HandleAdRequest(request, outputs);
+                break;
+            case ClcwReceived clcw:
+                HandleClcw(clcw.Clcw, outputs);
+                break;
+            case TimerExpired:
+                HandleTimerExpiry(outputs);
+                break;
+        }
+
+        return outputs;
     }
+
+    private void HandleAdRequest(TransmitAdRequest request, List<FopOutput> outputs)
+    {
+        if (State != FopState.Active)
+        {
+            outputs.Add(new RejectBusy(request.RequestId));
+            return;
+        }
+
+        // Sliding window: outstanding frames = V(S) - NN(R) (mod 256).
+        int outstanding = (byte)(Vs - NnR);
+        if (outstanding >= Profile.SlidingWindowK)
+        {
+            outputs.Add(new RejectBusy(request.RequestId));
+            return;
+        }
+
+        var frame = new SentFrame(request.RequestId, Vs, request.FrameData);
+        _sentQueue.Add(frame);
+        outputs.Add(new RadiateFrame(request.RequestId, Vs, request.FrameData));
+        Vs = (byte)(Vs + 1);
+
+        if (_sentQueue.Count == 1)
+        {
+            _transmissionCount = 1;
+            outputs.Add(new StartTimer(Profile.T1TimeoutMs));
+        }
+    }
+
+    private void HandleClcw(Clcw clcw, List<FopOutput> outputs)
+    {
+        if (clcw.LockoutFlag)
+        {
+            Purge(outputs, "lockout detected");
+            State = FopState.Initial;
+            outputs.Add(new Alert("lockout"));
+            return;
+        }
+
+        // Acknowledge frames with sequence number < N(R) (mod 256).
+        int acknowledged = (byte)(clcw.ReportValue - NnR);
+        if (acknowledged > 0 && acknowledged <= _sentQueue.Count)
+        {
+            for (int i = 0; i < acknowledged; i++)
+            {
+                outputs.Add(new PositiveConfirm(_sentQueue[i].RequestId));
+            }
+
+            _sentQueue.RemoveRange(0, acknowledged);
+            NnR = clcw.ReportValue;
+            _transmissionCount = 1;
+
+            if (_sentQueue.Count == 0)
+            {
+                outputs.Add(new CancelTimer());
+                State = FopState.Active;
+                return;
+            }
+
+            outputs.Add(new StartTimer(Profile.T1TimeoutMs));
+        }
+
+        if (clcw.RetransmitFlag)
+        {
+            // Enter a retransmit state; radiate immediately when no wait is
+            // required. The state persists until a clean CLCW acknowledges.
+            State = clcw.WaitFlag ? FopState.RetransmitWithWait : FopState.RetransmitWithoutWait;
+            if (!clcw.WaitFlag)
+            {
+                Retransmit(outputs);
+            }
+        }
+        else if (acknowledged > 0)
+        {
+            // Clean acknowledgement with frames still outstanding: back to Active.
+            State = FopState.Active;
+        }
+    }
+
+    private void HandleTimerExpiry(List<FopOutput> outputs)
+    {
+        if (_sentQueue.Count == 0)
+        {
+            return;
+        }
+
+        _transmissionCount++;
+        if (_transmissionCount <= Profile.TransmissionLimit)
+        {
+            Retransmit(outputs);
+            outputs.Add(new StartTimer(Profile.T1TimeoutMs));
+            return;
+        }
+
+        // Limit exceeded: alert, purge, negative-confirm all pending frames.
+        outputs.Add(new Alert("T1 timeout: transmission limit exceeded"));
+        Purge(outputs, "T1 timeout limit exceeded");
+        State = FopState.Initial;
+    }
+
+    private void Retransmit(List<FopOutput> outputs)
+    {
+        foreach (var frame in _sentQueue)
+        {
+            outputs.Add(new RadiateFrame(frame.RequestId, frame.SequenceNumber, frame.FrameData));
+        }
+    }
+
+    private void Purge(List<FopOutput> outputs, string reason)
+    {
+        foreach (var frame in _sentQueue)
+        {
+            outputs.Add(new NegativeConfirm(frame.RequestId, reason));
+        }
+
+        _sentQueue.Clear();
+        _transmissionCount = 0;
+        outputs.Add(new CancelTimer());
+    }
+
+    private readonly record struct SentFrame(long RequestId, byte SequenceNumber, byte[] FrameData);
 }

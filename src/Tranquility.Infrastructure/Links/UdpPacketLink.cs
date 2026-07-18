@@ -167,6 +167,7 @@ public sealed class LinkFactory : ILinkFactory
     public ILink Create(LinkOptions options) => options.Type switch
     {
         "udp-packet" => new UdpPacketLink(options.Name, options.Port),
+        "loopback-tc" => new LoopbackTcLink(options.Name),
         _ => throw new InvalidOperationException($"Unknown link type '{options.Type}'"),
     };
 }

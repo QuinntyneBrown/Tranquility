@@ -154,12 +154,114 @@ public sealed class XtceLoader
             }
         }
 
+        var cm = Child(element, "CommandMetaData");
+        if (cm is not null)
+        {
+            var argTypes = new Dictionary<string, ArgumentType>(StringComparer.Ordinal);
+            foreach (var argTypeElement in Child(cm, "ArgumentTypeSet")?.Elements() ?? [])
+            {
+                try
+                {
+                    var argType = ParseArgumentType(argTypeElement);
+                    argTypes[argType.Name] = argType;
+                }
+                catch (XtceLoadException e)
+                {
+                    context.Diagnostics.Add(e.ToDiagnostic());
+                }
+            }
+
+            foreach (var metaCommandElement in Child(cm, "MetaCommandSet")?.Elements()
+                         .Where(e => e.Name.LocalName == "MetaCommand") ?? [])
+            {
+                try
+                {
+                    system.Commands.Add(ParseMetaCommand(metaCommandElement, system.QualifiedName, argTypes));
+                }
+                catch (XtceLoadException e)
+                {
+                    context.Diagnostics.Add(e.ToDiagnostic());
+                }
+            }
+        }
+
         foreach (var childElement in element.Elements().Where(e => e.Name.LocalName == "SpaceSystem"))
         {
             ParseSpaceSystem(childElement, system, context);
         }
 
         return system;
+    }
+
+    private static ArgumentType ParseArgumentType(XElement element)
+    {
+        string name = RequiredAttribute(element, "name");
+        var encoding = ParseEncoding(element, name);
+        switch (element.Name.LocalName)
+        {
+            case "IntegerArgumentType":
+                return new IntegerArgumentType(name, encoding,
+                    string.Equals(element.Attribute("signed")?.Value, "true", StringComparison.OrdinalIgnoreCase));
+            case "EnumeratedArgumentType":
+            {
+                var labels = new Dictionary<string, long>(StringComparer.Ordinal);
+                var list = Child(element, "EnumerationList")
+                    ?? throw new XtceLoadException($"EnumeratedArgumentType '{name}' has no EnumerationList.", element);
+                foreach (var enumeration in list.Elements().Where(e => e.Name.LocalName == "Enumeration"))
+                {
+                    labels[RequiredAttribute(enumeration, "label")] = ParseLong(RequiredAttribute(enumeration, "value"), enumeration);
+                }
+
+                return new EnumeratedArgumentType(name, encoding, labels);
+            }
+
+            default:
+                throw new XtceLoadException(
+                    $"Unsupported construct '{element.Name.LocalName}' in ArgumentTypeSet.", element, element.Name.LocalName);
+        }
+    }
+
+    private static MetaCommand ParseMetaCommand(
+        XElement element, string systemQualifiedName, Dictionary<string, ArgumentType> argTypes)
+    {
+        string name = RequiredAttribute(element, "name");
+        string qualifiedName = $"{systemQualifiedName}/{name}";
+
+        var arguments = new List<CommandArgument>();
+        foreach (var argElement in Child(element, "ArgumentList")?.Elements().Where(e => e.Name.LocalName == "Argument") ?? [])
+        {
+            string argName = RequiredAttribute(argElement, "name");
+            string typeRef = RequiredAttribute(argElement, "argumentTypeRef");
+            if (!argTypes.TryGetValue(typeRef, out var type))
+            {
+                throw new XtceLoadException(
+                    $"Argument '{argName}' references unknown argument type '{typeRef}'.", argElement, "Argument");
+            }
+
+            arguments.Add(new CommandArgument(argName, type));
+        }
+
+        var entries = new List<CommandEntry>();
+        var container = Child(element, "CommandContainer");
+        foreach (var entry in Child(container ?? element, "EntryList")?.Elements() ?? [])
+        {
+            switch (entry.Name.LocalName)
+            {
+                case "FixedValueEntry":
+                    entries.Add(new FixedValueEntry(
+                        Convert.FromHexString(RequiredAttribute(entry, "binaryValue")),
+                        ParseInt(RequiredAttribute(entry, "sizeInBits"), entry)));
+                    break;
+                case "ArgumentRefEntry":
+                    entries.Add(new ArgumentRefEntry(RequiredAttribute(entry, "argumentRef")));
+                    break;
+                default:
+                    throw new XtceLoadException(
+                        $"Unsupported construct '{entry.Name.LocalName}' in command EntryList.", entry, entry.Name.LocalName);
+            }
+        }
+
+        return new MetaCommand(name, qualifiedName, arguments, entries);
     }
 
     private static ParameterType ParseParameterType(XElement element, string systemQualifiedName)

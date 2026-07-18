@@ -65,6 +65,15 @@ public sealed class MissionInstance(string name, TimeProvider timeProvider)
     /// <summary>The realtime processor attached by the host at startup.</summary>
     public Processing.RealtimeProcessor? Processor { get; private set; }
 
+    /// <summary>Commanding runtime (issue/queue/history), attached at startup.</summary>
+    public Commanding.CommandService? Commands { get; set; }
+
+    /// <summary>COP-1 services keyed by uplink link name.</summary>
+    public Dictionary<string, Commanding.Cop1Service> Cop1Services { get; } = new(StringComparer.Ordinal);
+
+    public Commanding.CommandService RequireCommands() => Commands
+        ?? throw new NotFoundServiceException($"Instance '{Name}' has no commanding service");
+
     public void AttachProcessor(Processing.RealtimeProcessor processor)
     {
         Processor = processor;

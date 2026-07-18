@@ -38,6 +38,6 @@ public sealed class LoadMissionDatabaseCommandHandler(
 
         var mdb = result.Database!;
         return new MdbOverviewSnapshot(mdb.Version, mdb.Parameters.Count, mdb.ParameterTypes.Count,
-            mdb.Containers.Count, CommandCount: 0, AlgorithmCount: 0);
+            mdb.Containers.Count, CommandCount: mdb.Commands.Count, AlgorithmCount: 0);
     }
 }

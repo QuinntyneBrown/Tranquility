@@ -12,6 +12,7 @@ public sealed class MissionDatabase
     private readonly Dictionary<string, ParameterType> _parameterTypes = new(StringComparer.Ordinal);
     private readonly Dictionary<SequenceContainer, List<SequenceContainer>> _derived = new();
     private readonly Dictionary<string, Parameter> _byAlias = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, MetaCommand> _commands = new(StringComparer.Ordinal);
 
     public MissionDatabase(SpaceSystem root, string version = "0")
     {
@@ -43,8 +44,16 @@ public sealed class MissionDatabase
 
     public IReadOnlyCollection<ParameterType> ParameterTypes => _parameterTypes.Values;
 
+    public IReadOnlyCollection<MetaCommand> Commands => _commands.Values;
+
     public Parameter? FindParameter(string qualifiedName) =>
         _parameters.GetValueOrDefault(qualifiedName);
+
+    /// <summary>Resolves a command by qualified name, bare name, or root-relative name.</summary>
+    public MetaCommand? ResolveCommand(string nameOrQualified) =>
+        _commands.GetValueOrDefault(nameOrQualified)
+        ?? _commands.GetValueOrDefault($"/{nameOrQualified}")
+        ?? _commands.Values.FirstOrDefault(c => c.Name == nameOrQualified);
 
     /// <summary>
     /// Resolves a parameter by qualified name, or by alias when no qualified
@@ -90,6 +99,11 @@ public sealed class MissionDatabase
             _containers[container.QualifiedName] = container;
         }
 
+        foreach (var command in system.Commands)
+        {
+            _commands[command.QualifiedName] = command;
+        }
+
         foreach (var child in system.Children)
         {
             Index(child);
@@ -124,6 +138,8 @@ public sealed class SpaceSystem
     public List<Parameter> Parameters { get; } = new();
 
     public List<SequenceContainer> Containers { get; } = new();
+
+    public List<MetaCommand> Commands { get; } = new();
 }
 
 /// <summary>An XTCE alias: a name in an external namespace (AliasSet/Alias).</summary>
