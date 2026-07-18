@@ -8,6 +8,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
 
 jobs:
   build-test:
@@ -66,3 +69,42 @@ jobs:
       - name: License gate control tests (L2-QLT-003)
         # Negative control: proves the gate can fail on a disallowed license.
         run: dotnet test --configuration Release --filter "Category=LicenseAudit"
+
+  perf-smoke:
+    # L2-QLT-004 verification: the deterministic Core throughput gate on every PR.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Perf smoke (declared targets)
+        run: dotnet test --configuration Release --filter "Category=PerfSmoke"
+
+  perf-full:
+    # Full declared-target verification via the standalone benchmark; scheduled
+    # and manually dispatchable so it never blocks PRs on socket-timing noise.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Performance gate
+        run: dotnet run --project tests/Tranquility.Benchmarks --configuration Release -- tests/fixtures/xtce/SampleSat.xml
+
+  windows-matrix:
+    # Dev platform is Windows, CI merge gate is Linux; keep both honest nightly.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build and test
+        run: dotnet test --configuration Release

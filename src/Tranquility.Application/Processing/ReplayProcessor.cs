@@ -73,9 +73,10 @@ public sealed class ReplayProcessor : IProcessor
 
     public void Pause()
     {
+        // Pausing a completed replay is a documented no-op, not a conflict.
         if (_replayState == "STOPPED")
         {
-            throw new ConflictServiceException($"Replay processor '{Name}' has already stopped");
+            return;
         }
 
         _paused = true;
@@ -87,7 +88,7 @@ public sealed class ReplayProcessor : IProcessor
     {
         if (_replayState == "STOPPED")
         {
-            throw new ConflictServiceException($"Replay processor '{Name}' has already stopped");
+            return;
         }
 
         _paused = false;
