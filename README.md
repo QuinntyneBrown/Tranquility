@@ -1,83 +1,176 @@
 # Tranquility
 
-A mission control / C3 (Command, Control, Communication) server implemented in
-modern .NET, designed to pair with browser-based telemetry visualization
-clients over a documented HTTP + WebSocket API.
+A clean-room mission control and C3 server for telemetry, commanding, archive,
+file transfer, and operational client integration.
 
-Tranquility is a **clean-room implementation** derived exclusively from
-published standards (CCSDS, OMG XTCE) and published API documentation. See
-`docs/specs/` for the requirements baseline and provenance rules.
+[![CI](https://github.com/QuinntyneBrown/Tranquility/actions/workflows/ci.yml/badge.svg)](https://github.com/QuinntyneBrown/Tranquility/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-c6fb50.svg)](LICENSE)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![C%23](https://img.shields.io/badge/C%23-latest-239120?logo=csharp&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
+[![Requirements](https://img.shields.io/badge/L2_requirements-67%2F67-1d8fb9.svg)](docs/specs/TRQ-VCRM.md)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-1d8fb9.svg)](CONTRIBUTING.md)
 
-## Status
+[Specifications](docs/specs/README.md) |
+[Detailed designs](docs/detailed-designs/README.md) |
+[Architecture decisions](docs/adr/README.md) |
+[Development](DEVELOPMENT.md) |
+[Contributing](CONTRIBUTING.md)
 
-Complete end-to-end implementation, built test-first (ATDD). Every one of the
-67 L2 requirements is covered by a traced acceptance test
-(`[Requirement("L2-…")]`); the traceability ratchet and a final coverage gate
-enforce that coverage only moves forward. The verification cross-reference
-matrix is generated from the suite: `docs/specs/TRQ-VCRM.md`.
+## About the project
 
-Subsystems implemented: space data-link framing (TM/AOS/USLP/TC), space-packet
-decommutation, XTCE mission database, parameter processing and alarms,
-real-time streaming (json + clean-room protobuf WebSocket subprotocols),
-SQLite archive with replay, instance/processor lifecycle, data links,
-commanding (issue/queue/history, COP-1, CLTU, TC frames), time correlation,
-CFDP file transfer, security (IAM, authZ, TLS, hash-chained audit), the
-differential conformance harness, and the quality/governance gates.
+Tranquility is a long-lived, stateful backend for mission telemetry ingest,
+CCSDS packet and frame processing, XTCE mission databases, parameter
+evaluation, commanding, archive and replay, file transfer, time correlation,
+security, and HTTP/WebSocket client access.
 
-## Layout
+The implementation is clean-room: behavior is derived from published CCSDS and
+OMG XTCE standards, published API documentation, and the requirements under
+[docs/specs](docs/specs/README.md). It does not depend on source code from the
+reference mission-control system.
 
-| Path | Content |
-|---|---|
-| `src/Tranquility.Core` | Pure, deterministic domain: CCSDS parsing, MDB model, decommutation, alarms, COP-1/CLTU, CFDP, time correlation. Zero I/O, zero clock, zero package refs. |
-| `src/Tranquility.Application` | CQRS handlers, ports, processor pipeline, commanding/CFDP/TCO runtimes. |
-| `src/Tranquility.Infrastructure` | SQLite archive/IAM/audit, XTCE loader, UDP/loopback links, filestore. |
-| `src/Tranquility.Wire` | Clean-room `.proto` schema, JSON DTOs, RFC 3339 converters, exception envelope. |
-| `src/Tranquility.Server` | ASP.NET Core host: HTTP API + `/api/websocket`, JWT auth, TLS. |
-| `tools/Tranquility.DiffHarness` | Differential conformance harness (external-observation only). |
-| `tests/Tranquility.AcceptanceTests` | The traced ATDD suite + architecture/determinism/metadata gates. |
-| `tests/Tranquility.Benchmarks` | Performance verification against `thresholds.json`. |
-| `docs/specs/` | Requirements (L1/L2 per subsystem), ICD, CFDP profile, VCRM. |
-| `docs/detailed-designs/` | 116 PlantUML sequence diagrams, one per behaviour. |
-| `docs/adr/` | Architecture decisions (all resolved). |
+The differentiator is end-to-end traceability. Every detailed L2 requirement
+is bound to one or more acceptance tests through a `[Requirement("L2-…")]`
+attribute. Meta-tests prevent requirements from disappearing silently, and the
+[verification cross-reference matrix](docs/specs/TRQ-VCRM.md) records the
+executable evidence.
 
-## Build and test
+Tranquility has not completed an independent mission-safety, security, privacy,
+or operational-readiness assessment. Treat it as an engineering baseline, not
+a certified flight-operations system.
 
-```sh
-dotnet build
-dotnet test
+## Features
+
+- TM, AOS, USLP, and TC transfer-frame handling with explicit diagnostics
+- CCSDS space-packet parsing and deterministic XTCE-driven decommutation
+- Mission database loading, validation, aliases, commands, and metadata queries
+- Parameter calibration, limits, alarms, derived values, and update publication
+- Command issue, queues, history, verification, COP-1, CLTU, and TC framing
+- CFDP file-transfer lifecycle with a declared conformance profile
+- SQLite-backed archive, replay, IAM, and hash-chained audit records
+- Real-time JSON and clean-room protobuf WebSocket subprotocols
+- Instance, processor, link, replay, and time-correlation lifecycle operations
+- JWT authentication, privilege authorization, TLS verification, and IAM APIs
+- Differential-conformance tooling based only on external observations
+- Linux-first CI, dependency-license enforcement, and performance gates
+
+## Getting started
+
+### Prerequisites
+
+- [.NET SDK 10.0.100 or compatible 10.0 feature band](https://dotnet.microsoft.com/)
+  (pinned in [global.json](global.json))
+- Git
+- Optional: Java and [PlantUML](https://plantuml.com/) to render detailed designs
+
+### Local development
+
+```bash
+git clone https://github.com/QuinntyneBrown/Tranquility.git
+cd Tranquility
+
+dotnet restore
+dotnet run --project src/Tranquility.Server --urls http://localhost:5208
 ```
 
-The acceptance suite boots the full pipeline two ways: in-process
-(`WebApplicationFactory`) and over real TLS Kestrel with genuine wss and UDP
-sockets. `DEVELOPMENT.md` documents the RED→GREEN milestone convention.
+The server reports its bound address at startup. A bare local launch uses an
+ephemeral JWT signing key and has no seeded users or mission instances. Public
+read surfaces can still be inspected, for example:
 
-## Quickstart
-
-```sh
-dotnet run --project src/Tranquility.Server
-```
-
-Then over HTTP/WebSocket (see `docs/specs/application-programming-interface/`):
-
-```sh
+```bash
 curl http://localhost:5208/api/instances
-curl http://localhost:5208/api/mdb/sim
-# WebSocket /api/websocket, subprotocol json:
-#   {"type":"parameters","id":1,"options":{"instance":"sim","id":[{"name":"/SampleSat/Temperature"}]}}
 ```
 
-## Requirement traceability
+Configure `Tranquility:Security`, `Tranquility:Instances`,
+`Tranquility:MdbDirectory`, and `Tranquility:DataDirectory` through normal
+ASP.NET Core configuration providers before exercising authenticated mutation
+paths or retaining operational data. Never commit signing keys, password
+hashes derived from real credentials, mission data, or deployment secrets.
 
-Every acceptance test carries `[Requirement("L2-…")]`; `docs/specs/TRQ-VCRM.md`
-is regenerated from those traits and lists the verifying test(s) per
-requirement. Coverage is enforced by meta-tests in
-`tests/Tranquility.AcceptanceTests/Traceability/`.
+## Technology
 
-## Performance
+| Area | Technologies |
+|---|---|
+| Runtime | .NET 10, ASP.NET Core, C# |
+| Domain | Deterministic CCSDS, CFDP, COP-1, CLTU, XTCE, and time-code engines |
+| Application | Explicit command/query dispatch, ports, processors, subscriptions |
+| Persistence | SQLite archives, identity store, and audit chain |
+| Wire protocols | HTTP/JSON, WebSocket JSON, clean-room protobuf |
+| Quality | xUnit v3, CsCheck, traced ATDD, architecture and scope gates |
+| Documentation | Markdown, PlantUML sequence designs, architecture decisions |
+| Delivery | GitHub Actions on Linux and Windows, license and performance gates |
 
-Declared targets in `docs/PERFORMANCE-BASELINE.md`, verified by
-`tests/Tranquility.Benchmarks` and the `PerfSmoke` acceptance tests (ADR-0005).
+## Testing
+
+```bash
+dotnet build --configuration Release
+dotnet test --configuration Release
+
+# Deterministic performance smoke gate
+dotnet test --configuration Release --filter "Category=PerfSmoke"
+
+# Full standalone benchmark
+dotnet run --project tests/Tranquility.Benchmarks --configuration Release -- \
+  tests/fixtures/xtce/SampleSat.xml
+```
+
+The acceptance suite runs both in process and over real Kestrel TLS with
+genuine WSS and UDP sockets. See [DEVELOPMENT.md](DEVELOPMENT.md) for the ATDD
+RED → GREEN convention, traceability ratchet, determinism rules, and test
+taxonomy.
+
+## Project structure
+
+```text
+src/
+  Tranquility.Core/             Pure protocol and mission-domain engines
+  Tranquility.Application/      CQRS paths, ports, processors, runtime services
+  Tranquility.Infrastructure/   SQLite, XTCE, links, IAM, audit, and filestore
+  Tranquility.Wire/             JSON DTOs, converters, and protobuf contracts
+  Tranquility.Server/           ASP.NET Core HTTP and WebSocket host
+tests/
+  Tranquility.AcceptanceTests/  Traced ATDD and conformance gates
+  Tranquility.Benchmarks/       Declared performance verification
+tools/
+  Tranquility.DiffHarness/      External-observation conformance comparison
+docs/
+  specs/                        L1/L2 requirements and traceability matrix
+  detailed-designs/             PlantUML behavior designs by subsystem
+  adr/                          Accepted architecture decisions
+```
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [Specification index](docs/specs/README.md) | L1 and L2 requirements for all 15 subsystems |
+| [Verification matrix](docs/specs/TRQ-VCRM.md) | Requirement-to-acceptance-test evidence |
+| [Detailed-design index](docs/detailed-designs/README.md) | 116 requirement-linked PlantUML behavior diagrams |
+| [Architecture decisions](docs/adr/README.md) | Accepted implementation decisions and rationale |
+| [Performance baseline](docs/PERFORMANCE-BASELINE.md) | Declared throughput and latency targets |
+| [Development conventions](DEVELOPMENT.md) | ATDD workflow, traceability, determinism, and platform rules |
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
+test-first workflow, branch conventions, quality gates, specification rules,
+and architecture boundaries. Participation is governed by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+Human contributors are recognized in [CONTRIBUTORS.md](CONTRIBUTORS.md), and
+notable changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+## Security
+
+Do not report vulnerabilities in a public issue. Follow
+[SECURITY.md](SECURITY.md) to submit a private report. For usage questions and
+non-sensitive defects, see [SUPPORT.md](SUPPORT.md).
+
+## Governance
+
+Maintainer responsibilities, decision making, and the path to becoming a
+maintainer are described in [GOVERNANCE.md](GOVERNANCE.md).
 
 ## License
 
-Apache-2.0. Dependencies are license-audited in CI (L2-QLT-003).
+Copyright (c) 2026 Tranquility contributors. Released under the
+[Apache License 2.0](LICENSE).
