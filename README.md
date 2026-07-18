@@ -1,28 +1,44 @@
 # Tranquility
 
-A mission control / C3 (Command, Control, Communication) server implemented in modern .NET, designed to pair with browser-based telemetry visualization clients over a documented HTTP + WebSocket API.
+A mission control / C3 (Command, Control, Communication) server implemented in
+modern .NET, designed to pair with browser-based telemetry visualization
+clients over a documented HTTP + WebSocket API.
 
-Tranquility is a **clean-room implementation** derived exclusively from published standards (CCSDS, OMG XTCE) and published API documentation. See `docs/specs/` for the requirements baseline and provenance rules.
+Tranquility is a **clean-room implementation** derived exclusively from
+published standards (CCSDS, OMG XTCE) and published API documentation. See
+`docs/specs/` for the requirements baseline and provenance rules.
 
 ## Status
 
-Skeleton + vertical slice: UDP packet ingest → CCSDS space packet decommutation → XTCE-driven parameter processing and alarms → HTTP + WebSocket API.
+Complete end-to-end implementation, built test-first (ATDD). Every one of the
+67 L2 requirements is covered by a traced acceptance test
+(`[Requirement("L2-…")]`); the traceability ratchet and a final coverage gate
+enforce that coverage only moves forward. The verification cross-reference
+matrix is generated from the suite: `docs/specs/TRQ-VCRM.md`.
 
-See `docs/specs/README.md` for the subsystem requirement index.
+Subsystems implemented: space data-link framing (TM/AOS/USLP/TC), space-packet
+decommutation, XTCE mission database, parameter processing and alarms,
+real-time streaming (json + clean-room protobuf WebSocket subprotocols),
+SQLite archive with replay, instance/processor lifecycle, data links,
+commanding (issue/queue/history, COP-1, CLTU, TC frames), time correlation,
+CFDP file transfer, security (IAM, authZ, TLS, hash-chained audit), the
+differential conformance harness, and the quality/governance gates.
 
 ## Layout
 
 | Path | Content |
 |---|---|
-| `src/Tranquility.Core` | Pure domain: CCSDS parsing, MDB model, decommutation, alarms. No I/O dependencies. |
-| `src/Tranquility.Application` | CQRS handlers, processor pipeline, ports. |
-| `src/Tranquility.Infrastructure` | XTCE loader, UDP link, in-memory stores. |
-| `src/Tranquility.Server` | ASP.NET Core host: HTTP API + `/api/websocket`. |
-| `src/Tranquility.{Commanding,Cfdp,Archive}` | Interface-level stubs for later phases. |
-| `tools/Tranquility.PacketGen` | Demo CCSDS packet sender. |
-| `tools/Tranquility.DiffHarness` | Differential conformance harness skeleton. |
-| `tests/` | Unit + integration tests. |
-| `docs/specs/` | Requirements categorized by subsystem and split into L1/L2 artifacts. |
+| `src/Tranquility.Core` | Pure, deterministic domain: CCSDS parsing, MDB model, decommutation, alarms, COP-1/CLTU, CFDP, time correlation. Zero I/O, zero clock, zero package refs. |
+| `src/Tranquility.Application` | CQRS handlers, ports, processor pipeline, commanding/CFDP/TCO runtimes. |
+| `src/Tranquility.Infrastructure` | SQLite archive/IAM/audit, XTCE loader, UDP/loopback links, filestore. |
+| `src/Tranquility.Wire` | Clean-room `.proto` schema, JSON DTOs, RFC 3339 converters, exception envelope. |
+| `src/Tranquility.Server` | ASP.NET Core host: HTTP API + `/api/websocket`, JWT auth, TLS. |
+| `tools/Tranquility.DiffHarness` | Differential conformance harness (external-observation only). |
+| `tests/Tranquility.AcceptanceTests` | The traced ATDD suite + architecture/determinism/metadata gates. |
+| `tests/Tranquility.Benchmarks` | Performance verification against `thresholds.json`. |
+| `docs/specs/` | Requirements (L1/L2 per subsystem), ICD, CFDP profile, VCRM. |
+| `docs/detailed-designs/` | 116 PlantUML sequence diagrams, one per behaviour. |
+| `docs/adr/` | Architecture decisions (all resolved). |
 
 ## Build and test
 
@@ -31,60 +47,36 @@ dotnet build
 dotnet test
 ```
 
-## Quickstart: run the vertical slice
+The acceptance suite boots the full pipeline two ways: in-process
+(`WebApplicationFactory`) and over real TLS Kestrel with genuine wss and UDP
+sockets. `DEVELOPMENT.md` documents the RED→GREEN milestone convention.
 
-Terminal 1 — start the server (loads `samples/SampleSat.xml`, listens for
-CCSDS space packets on UDP 10015):
+## Quickstart
 
 ```sh
 dotnet run --project src/Tranquility.Server
 ```
 
-Terminal 2 — stream sample telemetry:
-
-```sh
-dotnet run --project tools/Tranquility.PacketGen -- 127.0.0.1 10015 20 500
-```
-
-Query current values over HTTP (port from server output):
+Then over HTTP/WebSocket (see `docs/specs/application-programming-interface/`):
 
 ```sh
 curl http://localhost:5208/api/instances
-curl http://localhost:5208/api/links/sample
-curl http://localhost:5208/api/processors/sample/realtime/parameters/SampleSat/Temperature
+curl http://localhost:5208/api/mdb/sim
+# WebSocket /api/websocket, subprotocol json:
+#   {"type":"parameters","id":1,"options":{"instance":"sim","id":[{"name":"/SampleSat/Temperature"}]}}
 ```
 
-Or subscribe over WebSocket at `/api/websocket` (subprotocol `json`):
+## Requirement traceability
 
-```json
-{"type":"parameters","id":1,"options":{"id":[{"name":"/SampleSat/Temperature"}]}}
-```
+Every acceptance test carries `[Requirement("L2-…")]`; `docs/specs/TRQ-VCRM.md`
+is regenerated from those traits and lists the verifying test(s) per
+requirement. Coverage is enforced by meta-tests in
+`tests/Tranquility.AcceptanceTests/Traceability/`.
 
-Configuration keys: `Tranquility:Instance` (default `sample`),
-`Tranquility:MdbPath` (default `SampleSat.xml` beside the binary),
-`Tranquility:UdpPort` (default `10015`).
+## Performance
 
-## Requirement traceability (implemented slice)
-
-Code carries `Implements:`/`Traces:` doc comments naming L2 requirement IDs.
-Where each implemented requirement lives:
-
-| Requirement | Implementation | Verified by |
-|---|---|---|
-| L2-SPP-001/002 (space packet header) | `Core/Ccsds/SpacePacket.cs` | `Core.Tests/Ccsds/SpacePacketHeaderTests` |
-| L2-SDL (TM frame, M_PDU extract) | `Core/Ccsds/TmFrameHeader.cs`, `VirtualChannelPacketExtractor.cs` | `Core.Tests/Ccsds/TmFrameTests` |
-| L2-TIM (CUC/CDS time codes) | `Core/Ccsds/CucTimeCodec.cs`, `CdsTimeCodec.cs` | `Core.Tests/Ccsds/TimeCodecTests` |
-| L2-MDB-001/002 (MDB model, XTCE load) | `Core/Mdb/*`, `Infrastructure/Xtce/XtceLoader.cs` | `Application.Tests/XtceLoaderTests` |
-| L2-SPP-003, L2-PAR-001/002 (decomm, calibration, limits) | `Core/Decommutation/*`, `Core/Alarms/*` | `Core.Tests/Decommutation/*` |
-| L2-LNK-001/002 (links) | `Infrastructure/Links/UdpPacketLink.cs`, link endpoints | `Server.Tests/ApiIntegrationTests` |
-| L2-API-001/002/004 (HTTP resources, error envelope, RFC 3339) | `Server/Program.cs`, `Server/Api/*` | `Server.Tests/ApiIntegrationTests` |
-| L2-API-003, L2-RTS-001..003 (WebSocket subscribe/push) | `Server/WebSockets/WebSocketApiHandler.cs` | `Server.Tests/EndToEndTests` |
-| L2-LIF-001/002 (instance/processor lifecycle) | `Application/InstanceRegistry.cs`, `Server/Hosting/TelemetryHostedService.cs` | `Server.Tests` |
-| L2-SEC (skeleton: authZ hook, audit) | `Server/Security/SecuritySkeleton.cs`, `Application/Abstractions/Ports.cs` (IAuditLog) | `Server.Tests` |
-| L2-QLT-001/003 (Linux CI, license audit) | `.github/workflows/ci.yml` | CI run |
-| L2-CMD, L2-FDP, L2-ARC, L2-DIF (stubs) | `Commanding/Cfdp/Archive` `Contracts.cs`, `tools/Tranquility.DiffHarness` | later phase |
-
-Full requirement text: `docs/specs/<subsystem>/L1.md` and `L2.md`.
+Declared targets in `docs/PERFORMANCE-BASELINE.md`, verified by
+`tests/Tranquility.Benchmarks` and the `PerfSmoke` acceptance tests (ADR-0005).
 
 ## License
 

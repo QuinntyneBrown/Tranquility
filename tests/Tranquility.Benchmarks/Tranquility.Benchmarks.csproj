@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Performance verification against thresholds.json (L2-QLT-004). Run as a
+       dedicated perf job: dotnet run -c Release. The PR smoke gate lives in
+       PerfVerificationTests (Category=PerfSmoke). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tranquility.Core\Tranquility.Core.csproj" />
+    <ProjectReference Include="..\..\src\Tranquility.Infrastructure\Tranquility.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="thresholds.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

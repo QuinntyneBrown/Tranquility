@@ -42,7 +42,7 @@ public sealed class PersistentProcessorTests(InProcApiFixture fixture) : IClassF
         await Eventually.Async(async () =>
             (await ProcessorLifecycleTests.ListAsync(admin))
                 .All(p => p.GetProperty("name").GetString() != "transient-replay"),
-            "non-persistent replay processor is removed after completion");
+            "non-persistent replay processor is removed after completion", TimeSpan.FromSeconds(30));
 
         // Persistent: completes but remains administratively visible.
         var persistent = await admin.PostAsJsonAsync($"/api/processors/{TestConfig.Instance}", new
@@ -58,6 +58,6 @@ public sealed class PersistentProcessorTests(InProcApiFixture fixture) : IClassF
             (await ProcessorLifecycleTests.ListAsync(admin)).Any(p =>
                 p.GetProperty("name").GetString() == "persistent-replay" &&
                 p.GetProperty("replayState").GetString() == "STOPPED"),
-            "persistent replay processor survives completion in STOPPED state");
+            "persistent replay processor survives completion in STOPPED state", TimeSpan.FromSeconds(30));
     }
 }

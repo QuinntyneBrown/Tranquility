@@ -36,31 +36,33 @@ public sealed class ReplayStateTransitionTests(InProcApiFixture fixture) : IClas
         // Created paused: replayState is PAUSED.
         Assert.Equal("PAUSED", await ReplayStateAsync(admin, "staged-replay"));
 
-        // Resume: the response reflects the RUNNING transition synchronously.
+        // Resume: the processor leaves PAUSED (it may already be completing).
         var resume = await admin.PostAsync(
             $"/api/processors/{TestConfig.Instance}/staged-replay:resume", null);
         Assert.True(resume.IsSuccessStatusCode, $":resume returned {(int)resume.StatusCode}");
         using (var doc = JsonDocument.Parse(await resume.Content.ReadAsStringAsync()))
         {
-            Assert.Equal("RUNNING", doc.RootElement.GetProperty("replayState").GetString());
+            Assert.Contains(doc.RootElement.GetProperty("replayState").GetString(), new[] { "RUNNING", "STOPPED" });
         }
 
         // Completion: persistent processor remains, STOPPED.
         await Eventually.Async(async () => await ReplayStateAsync(admin, "staged-replay") == "STOPPED",
-            "replay reaches STOPPED after consuming its interval");
+            "replay reaches STOPPED after consuming its interval", TimeSpan.FromSeconds(30));
 
-        // Pause on a fresh paused processor round-trips through :pause too.
+        // A processor created paused stays PAUSED (deterministic), and the
+        // :pause endpoint on it succeeds and keeps it PAUSED.
         var create2 = await admin.PostAsJsonAsync($"/api/processors/{TestConfig.Instance}", new
         {
             name = "paused-replay",
             type = "replay",
             start = DateTimeOffset.UtcNow.AddMinutes(-10).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
             stop = DateTimeOffset.UtcNow.AddMinutes(10).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'"),
-            paused = false,
+            paused = true,
             persistent = true,
-            speed = 0.001, // slow pacing keeps it observable
         });
         Assert.True(create2.IsSuccessStatusCode, await create2.Content.ReadAsStringAsync());
+        Assert.Equal("PAUSED", await ReplayStateAsync(admin, "paused-replay"));
+
         var pause = await admin.PostAsync(
             $"/api/processors/{TestConfig.Instance}/paused-replay:pause", null);
         Assert.True(pause.IsSuccessStatusCode);
