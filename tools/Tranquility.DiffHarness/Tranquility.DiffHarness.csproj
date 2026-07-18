@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Differential conformance harness (L2-DIF-001..004). External-observation
+       only: references Tranquility.Wire (documented interfaces) and the BCL,
+       never any reference-system package or the Tranquility server internals
+       (enforced by HarnessIsolationTests). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tranquility.Wire\Tranquility.Wire.csproj" />
+  </ItemGroup>
+
+</Project>

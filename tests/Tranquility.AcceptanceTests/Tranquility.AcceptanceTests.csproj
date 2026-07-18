@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tranquility.Server\Tranquility.Server.csproj" />
+    <ProjectReference Include="..\..\tools\Tranquility.DiffHarness\Tranquility.DiffHarness.csproj" />
   </ItemGroup>
 
 </Project>
