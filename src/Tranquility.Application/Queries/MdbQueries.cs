@@ -42,7 +42,7 @@ public sealed class GetMdbOverviewQueryHandler(InstanceRegistry registry)
             mdb.Parameters.Count,
             mdb.ParameterTypes.Count,
             mdb.Containers.Count,
-            CommandCount: 0,
+            CommandCount: mdb.Commands.Count,
             AlgorithmCount: 0));
     }
 }

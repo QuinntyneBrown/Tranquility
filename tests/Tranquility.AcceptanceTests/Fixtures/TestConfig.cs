@@ -36,6 +36,8 @@ public static class TestConfig
         ["Tranquility:Instances:0:Links:0:Name"] = "tm-in",
         ["Tranquility:Instances:0:Links:0:Type"] = "udp-packet",
         ["Tranquility:Instances:0:Links:0:Port"] = "0",
+        ["Tranquility:Instances:0:Links:1:Name"] = "tc-out",
+        ["Tranquility:Instances:0:Links:1:Type"] = "loopback-tc",
         ["Tranquility:MdbDirectory"] = XtceFixtureDirectory,
         ["Tranquility:Security:SigningKey"] = SigningKey,
 

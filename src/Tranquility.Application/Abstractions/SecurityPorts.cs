@@ -35,6 +35,17 @@ public interface IAuditLog
     Task AppendAsync(AuditEntry entry, CancellationToken cancellationToken);
 }
 
+/// <summary>Result of walking the audit hash chain.</summary>
+public sealed record AuditChainStatus(bool Valid, long Count, long? FirstBrokenSeq);
+
+/// <summary>Read + integrity-verification side of the audit store (L2-SEC-004).</summary>
+public interface IAuditQuery
+{
+    IReadOnlyList<AuditEntry> Query(string? service);
+
+    AuditChainStatus Verify();
+}
+
 /// <summary>System privilege names used by authorization policies (L2-SEC-003).</summary>
 public static class SystemPrivileges
 {

@@ -98,4 +98,29 @@
       </SequenceContainer>
     </ContainerSet>
   </TelemetryMetaData>
+  <CommandMetaData>
+    <ArgumentTypeSet>
+      <EnumeratedArgumentType name="modeArgType">
+        <IntegerDataEncoding sizeInBits="8" encoding="unsigned" />
+        <EnumerationList>
+          <Enumeration value="0" label="SAFE" />
+          <Enumeration value="1" label="NOMINAL" />
+          <Enumeration value="2" label="SCIENCE" />
+        </EnumerationList>
+      </EnumeratedArgumentType>
+    </ArgumentTypeSet>
+    <MetaCommandSet>
+      <MetaCommand name="SwitchMode">
+        <ArgumentList>
+          <Argument name="mode" argumentTypeRef="modeArgType" />
+        </ArgumentList>
+        <CommandContainer name="SwitchMode-cmd">
+          <EntryList>
+            <FixedValueEntry binaryValue="1064C0000000" sizeInBits="48" />
+            <ArgumentRefEntry argumentRef="mode" />
+          </EntryList>
+        </CommandContainer>
+      </MetaCommand>
+    </MetaCommandSet>
+  </CommandMetaData>
 </SpaceSystem>

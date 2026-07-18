@@ -23,7 +23,7 @@ public sealed class MdbResourceModelTests(InProcApiFixture fixture) : IClassFixt
         Assert.Equal(11, root.GetProperty("parameterCount").GetInt32());
         Assert.Equal(2, root.GetProperty("containerCount").GetInt32());
         Assert.True(root.GetProperty("parameterTypeCount").GetInt32() >= 9);
-        Assert.Equal(0, root.GetProperty("commandCount").GetInt32());
+        Assert.Equal(1, root.GetProperty("commandCount").GetInt32());
     }
 
     [Fact]

@@ -48,7 +48,9 @@ public static class TranquilityApp
         builder.Services.AddSingleton<IArchive, Infrastructure.Sqlite.SqliteArchive>();
         builder.Services.AddSingleton<WebSockets.WebSocketApiHandler>();
         builder.Services.AddHostedService<Hosting.TelemetryHostedService>();
-        builder.Services.AddSingleton<IAuditLog, InMemoryAuditLog>();
+        builder.Services.AddSingleton<Infrastructure.Sqlite.SqliteAuditLog>();
+        builder.Services.AddSingleton<IAuditLog>(sp => sp.GetRequiredService<Infrastructure.Sqlite.SqliteAuditLog>());
+        builder.Services.AddSingleton<IAuditQuery>(sp => sp.GetRequiredService<Infrastructure.Sqlite.SqliteAuditLog>());
         builder.Services.AddSingleton<IIdentityStore, ConfigIdentityStore>();
         builder.Services.AddSingleton<TokenService>();
 
@@ -79,6 +81,14 @@ public static class TranquilityApp
         builder.Services.AddSingleton<ICommandHandler<DeleteProcessorCommand, bool>, DeleteProcessorCommandHandler>();
         builder.Services.AddSingleton<ICommandHandler<PauseProcessorCommand, ProcessorSnapshot>, PauseProcessorCommandHandler>();
         builder.Services.AddSingleton<ICommandHandler<ResumeProcessorCommand, ProcessorSnapshot>, ResumeProcessorCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<IssueCommand, Application.Commanding.CommandRecord>, IssueCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<AcceptQueueEntryCommand, bool>, AcceptQueueEntryCommandHandler>();
+        builder.Services.AddSingleton<ICommandHandler<RejectQueueEntryCommand, bool>, RejectQueueEntryCommandHandler>();
+        builder.Services.AddSingleton<IQueryHandler<ListQueuesQuery, IReadOnlyList<QueueSnapshot>>, ListQueuesQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetCommandHistoryQuery, IReadOnlyList<Application.Commanding.CommandRecord>>, GetCommandHistoryQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetCop1StatusQuery, Application.Commanding.Cop1Status>, GetCop1StatusQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<GetAuditRecordsQuery, IReadOnlyList<AuditEntry>>, GetAuditRecordsQueryHandler>();
+        builder.Services.AddSingleton<IQueryHandler<VerifyAuditQuery, AuditChainStatus>, VerifyAuditQueryHandler>();
 
         // AuthN/AuthZ from day one (L2-SEC-002, L2-SEC-003).
         builder.Services
@@ -87,6 +97,9 @@ public static class TranquilityApp
             {
                 var tokens = new TokenService(options, TimeProvider.System);
                 bearer.TokenValidationParameters = tokens.ValidationParameters;
+                // Keep original claim names ("sub", "privilege") so NameClaimType
+                // resolves and User.Identity.Name is the username.
+                bearer.MapInboundClaims = false;
             });
         builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, EnvelopeAuthorizationResultHandler>();
         builder.Services.AddAuthorization(AuthorizationSetup.AddPrivilegePolicies);
@@ -108,6 +121,8 @@ public static class TranquilityApp
         LinkEndpoints.Map(app);
         ArchiveEndpoints.Map(app);
         ProcessorEndpoints.Map(app);
+        CommandingEndpoints.Map(app);
+        AuditEndpoints.Map(app);
 
         // Unmatched routes still answer in the documented envelope (L2-API-004).
         app.MapFallback(IResult () => throw new NotFoundServiceException("No such resource"));
